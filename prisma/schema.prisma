@@ -34,3 +34,24 @@ model Message {
   tokensUsed Int?
   createdAt  DateTime @default(now())
 }
+
+model Scenario {
+  id                       String   @id @default(auto()) @map("_id") @db.ObjectId
+  name                     String
+  aliases                  String[]
+  segments                 Json
+  impliesNextDayScenarioId String?
+  usageCount               Int      @default(0)
+  createdAt                DateTime @default(now())
+}
+
+model DayPlan {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  date             String   @unique
+  scenariosApplied String[]
+  segmentsResolved Json
+  confirmed        Boolean  @default(false)
+  isAtypical       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
