@@ -9,5 +9,5 @@
     "outDir": "dist",
     "types": ["node", "vitest/globals"]
   },
-  "include": ["api", "lib", "tests"]
+  "include": ["api", "lib", "tests", "scripts"]
 }
