@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
+import { searchFood } from './foods.js';
 import type { ToolDefinition } from './claude.js';
 
 export interface MealItem {
@@ -22,7 +23,7 @@ export interface LogMealInput {
 export const LOG_MEAL_TOOL: ToolDefinition = {
   name: 'log_meal',
   description:
-    "Enregistre un repas décrit en langage naturel par l'utilisateur. Estime les aliments, leurs macronutriments, et donne TOUJOURS une fourchette calorique (kcalLow/kcalMid/kcalHigh) — jamais un chiffre unique, l'estimation par description reste approximative.",
+    "Enregistre un repas décrit en langage naturel, SANS grammage précis (ex: \"une assiette de pâtes bolognaise\"). Estime les aliments, leurs macronutriments, et donne TOUJOURS une fourchette calorique (kcalLow/kcalMid/kcalHigh) — jamais un chiffre unique, l'estimation par description reste approximative. Si l'utilisateur donne un grammage précis pour chaque aliment, utilise log_weighed_meal à la place.",
   input_schema: {
     type: 'object',
     properties: {
@@ -67,4 +68,83 @@ export async function handleLogMealTool(rawInput: Record<string, unknown>): Prom
   });
 
   return `Repas enregistré : ${input.kcalLow}-${input.kcalHigh} kcal (estimation ~${input.kcalMid} kcal), confiance moyenne.`;
+}
+
+export interface WeighedMealItemInput {
+  foodQuery: string;
+  grams: number;
+}
+
+export interface LogWeighedMealInput {
+  rawDescription: string;
+  items: WeighedMealItemInput[];
+}
+
+export const LOG_WEIGHED_MEAL_TOOL: ToolDefinition = {
+  name: 'log_weighed_meal',
+  description:
+    "Enregistre un repas pesé, quand l'utilisateur donne un grammage précis pour chaque aliment (ex: \"200g de riz basmati cuit, 150g de poulet\"). Ne calcule JAMAIS toi-même les calories ou macros : donne uniquement le nom de chaque aliment tel que décrit et son poids en grammes, l'outil fait la recherche dans la base Ciqual et le calcul exact.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      rawDescription: { type: 'string' },
+      items: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            foodQuery: { type: 'string', description: "Nom de l'aliment tel que décrit par l'utilisateur" },
+            grams: { type: 'number' },
+          },
+          required: ['foodQuery', 'grams'],
+        },
+      },
+    },
+    required: ['rawDescription', 'items'],
+  },
+};
+
+export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>): Promise<string> {
+  const input = rawInput as unknown as LogWeighedMealInput;
+
+  const resolvedItems: MealItem[] = [];
+  const notFound: string[] = [];
+
+  for (const item of input.items) {
+    const food = await searchFood(item.foodQuery);
+    if (!food) {
+      notFound.push(item.foodQuery);
+      continue;
+    }
+    const ratio = item.grams / 100;
+    resolvedItems.push({
+      name: food.name,
+      estimatedGrams: item.grams,
+      kcal: food.kcalPer100g * ratio,
+      proteinG: food.proteinPer100g * ratio,
+      carbsG: food.carbsPer100g * ratio,
+      fatG: food.fatPer100g * ratio,
+    });
+  }
+
+  if (notFound.length > 0) {
+    return `Aliment(s) non trouvé(s) dans la base Ciqual : ${notFound.join(', ')}. Décris-les autrement (plus simple ou plus générique) ou utilise le mode "repas décrit".`;
+  }
+
+  const totalKcal = resolvedItems.reduce((sum, i) => sum + i.kcal, 0);
+
+  await prisma.meal.create({
+    data: {
+      inputType: 'text',
+      rawDescription: input.rawDescription,
+      items: resolvedItems as unknown as Prisma.InputJsonValue,
+      kcalLow: totalKcal,
+      kcalMid: totalKcal,
+      kcalHigh: totalKcal,
+      confidence: 'high',
+      userCorrected: false,
+    },
+  });
+
+  return `Repas pesé enregistré : ${totalKcal.toFixed(0)} kcal (${resolvedItems.length} aliment(s), confiance haute — lookup Ciqual).`;
 }
