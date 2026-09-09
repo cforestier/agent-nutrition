@@ -1,9 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { parseUpdate, sendMessage } from '../../lib/telegram.js';
-import { converse } from '../../lib/claude.js';
+import { converse, converseWithTool } from '../../lib/claude.js';
 import { SYSTEM_PROMPT } from '../../lib/prompts.js';
 import { recentMessages, saveMessage } from '../../lib/messages.js';
+import { isOnboardingBasicsComplete } from '../../lib/profile.js';
+import { ONBOARDING_SYSTEM_PROMPT, ONBOARDING_TOOL, handleOnboardingTool } from '../../lib/onboarding.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -23,7 +25,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 async function handleMessage(chatId: number, text: string): Promise<void> {
   const history = await recentMessages(10);
-  const result = await converse(SYSTEM_PROMPT, [...history, { role: 'user', content: text }]);
+  const onboardingDone = await isOnboardingBasicsComplete();
+
+  const result = onboardingDone
+    ? await converse(SYSTEM_PROMPT, [...history, { role: 'user', content: text }])
+    : await converseWithTool(ONBOARDING_SYSTEM_PROMPT, history, text, ONBOARDING_TOOL, handleOnboardingTool);
 
   await saveMessage('user', text);
   await saveMessage('assistant', result.text, result.outputTokens);
