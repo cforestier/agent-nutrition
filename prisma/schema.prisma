@@ -25,6 +25,12 @@ model Profile {
   onboardingComplete       Boolean   @default(false)
   edSignalFlagged          Boolean   @default(false)
   edSignalNote             String?
+  leanMassKg               Float?
+  kcalFloor                Float?
+  currentTargetKcal        Float?
+  baselineStartedAt        String?
+  lastAdjustmentDate       String?
+  consecutiveDeficitWeeks  Int       @default(0)
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 }
@@ -101,4 +107,47 @@ model Food {
   carbsPer100g   Float
   fatPer100g     Float
   createdAt      DateTime @default(now())
+}
+
+model BodyScan {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  date          String   @unique
+  weightKg      Float
+  leanMassKg    Float
+  fatMassKg     Float?
+  fatPct        Float?
+  boneMassKg    Float?
+  waterPct      Float?
+  visceralFat   Float?
+  reportedBmr   Float?
+  rawText       String?
+  source        String
+  createdAt     DateTime @default(now())
+}
+
+model DailyState {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  date           String   @unique
+  totalKcal      Float
+  proteinG       Float
+  carbsG         Float
+  fatG           Float
+  weightKg       Float?
+  rolling7Weight Float?
+  rolling14Kcal  Float?
+  observedTdee   Float?
+  predictedTdee  Float?
+  targetKcal     Float?
+  isExcluded     Boolean  @default(false)
+  adherenceFlag  Boolean?
+  createdAt      DateTime @default(now())
+}
+
+model TdeeComparison {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  date      String   @unique
+  predicted Float
+  observed  Float
+  deltaPct  Float
+  createdAt DateTime @default(now())
 }
