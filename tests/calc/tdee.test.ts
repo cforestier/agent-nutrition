@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { predictedTdee, observedTdee, tdeeComparison } from '../../lib/calc/tdee.js';
+import { predictedTdee, observedTdee, tdeeComparison, BASE_ACTIVITY_FACTOR } from '../../lib/calc/tdee.js';
 
 describe('predictedTdee', () => {
   it('computes BMR via Katch-McArdle on measured lean mass, times activity factor, plus planned segments', () => {
@@ -31,5 +31,12 @@ describe('tdeeComparison', () => {
     const result = tdeeComparison(2000, 3000);
     expect(result.deltaPct).toBeCloseTo(50, 5);
     expect(result.dataQualityFlag).toBe(true);
+  });
+});
+
+describe('BASE_ACTIVITY_FACTOR', () => {
+  it('is a light-activity multiplier used before planned segments are added', () => {
+    expect(BASE_ACTIVITY_FACTOR).toBeGreaterThan(1);
+    expect(BASE_ACTIVITY_FACTOR).toBeLessThan(2);
   });
 });

@@ -101,3 +101,18 @@ export type SleepQuality = 'good' | 'medium' | 'bad';
 export function blocksDownwardAdjustmentFromSleep(lastTwoNights: SleepQuality[]): boolean {
   return lastTwoNights.length === 2 && lastTwoNights.every((n) => n === 'bad');
 }
+
+export function dailyDeficitKcal(ratePctPerWeek: number, weightKg: number): number {
+  const weeklyDeficitKcal = (ratePctPerWeek / 100) * weightKg * 7700;
+  return weeklyDeficitKcal / 7;
+}
+
+export function bootstrapTargetKcal(
+  predictedTdeeKcal: number,
+  ratePctPerWeek: number,
+  weightKg: number,
+  floor: number
+): number {
+  const target = predictedTdeeKcal - dailyDeficitKcal(ratePctPerWeek, weightKg);
+  return Math.max(floor, target);
+}

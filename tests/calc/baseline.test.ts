@@ -11,6 +11,8 @@ import {
   needsScheduledDietBreak,
   isPerformanceDeclining,
   blocksDownwardAdjustmentFromSleep,
+  dailyDeficitKcal,
+  bootstrapTargetKcal,
   RATE_MAX_PCT,
 } from '../../lib/calc/baseline.js';
 
@@ -125,5 +127,23 @@ describe('blocksDownwardAdjustmentFromSleep', () => {
   it('does not block otherwise', () => {
     expect(blocksDownwardAdjustmentFromSleep(['bad', 'good'])).toBe(false);
     expect(blocksDownwardAdjustmentFromSleep(['good', 'good'])).toBe(false);
+  });
+});
+
+describe('dailyDeficitKcal', () => {
+  it('converts a weekly loss rate into a daily kcal deficit', () => {
+    // 0.5%/week of 80kg = 0.4kg/week = 3080 kcal/week (7700 kcal/kg) = 440 kcal/day
+    expect(dailyDeficitKcal(0.5, 80)).toBeCloseTo(440, 5);
+  });
+});
+
+describe('bootstrapTargetKcal', () => {
+  it('subtracts the daily deficit from predicted TDEE', () => {
+    // predicted 2706.2 - 440 daily deficit = 2266.2, above the floor
+    expect(bootstrapTargetKcal(2706.2, 0.5, 80, 1950)).toBeCloseTo(2266.2, 5);
+  });
+
+  it('never returns below the kcal floor', () => {
+    expect(bootstrapTargetKcal(2000, 0.5, 80, 1950)).toBe(1950);
   });
 });

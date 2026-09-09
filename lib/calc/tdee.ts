@@ -1,3 +1,8 @@
+// Light-activity/desk-job NEAT multiplier for the part of the day not covered by
+// WeeklyDefault.avgKcal (added separately as plannedSegmentsKcal). Day-1 guardrail
+// only — observed TDEE takes over once 14 days of real data exist (spec §5).
+export const BASE_ACTIVITY_FACTOR = 1.3;
+
 export interface PredictedTdeeInput {
   leanMassKg: number;
   activityFactor: number;
