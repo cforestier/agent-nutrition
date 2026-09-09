@@ -9,15 +9,13 @@ export interface FoodMatch {
   fatPer100g: number;
 }
 
-export async function searchFood(query: string): Promise<FoodMatch | null> {
+export async function searchFoodCandidates(query: string, limit = 5): Promise<FoodMatch[]> {
   const normalized = normalizeFoodName(query);
 
   const matches = await prisma.food.findMany({
     where: { nameNormalized: { contains: normalized } },
   });
 
-  if (matches.length === 0) return null;
-
   matches.sort((a, b) => a.name.length - b.name.length);
-  return matches[0];
+  return matches.slice(0, limit);
 }
