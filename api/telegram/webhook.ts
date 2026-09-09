@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
-import { parseUpdate, sendMessage } from '../../lib/telegram.js';
+import { parseUpdate, sendMessage, parseCallbackQuery, answerCallbackQuery } from '../../lib/telegram.js';
+import { saveSleepQuality } from '../../lib/sleep.js';
+import type { SleepQuality } from '../../lib/calc/baseline.js';
 import { converseWithTool } from '../../lib/claude.js';
 import { recentMessages, saveMessage } from '../../lib/messages.js';
 import { isOnboardingBasicsComplete } from '../../lib/profile.js';
@@ -22,6 +24,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const allowedChatId = Number(process.env.TELEGRAM_CHAT_ID);
+
+  const callbackQuery = parseCallbackQuery(req.body, allowedChatId);
+  if (callbackQuery) {
+    res.status(200).json({ ok: true });
+    waitUntil(handleCallbackQuery(callbackQuery));
+    return;
+  }
+
   const parsed = parseUpdate(req.body, allowedChatId);
 
   res.status(200).json({ ok: true });
@@ -83,6 +93,20 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
   await saveMessage('user', text);
   await saveMessage('assistant', result.text, result.outputTokens);
   await sendMessage(chatId, result.text);
+}
+
+const SLEEP_QUALITIES: SleepQuality[] = ['good', 'medium', 'bad'];
+
+async function handleCallbackQuery(cq: { callbackQueryId: string; chatId: number; data: string }): Promise<void> {
+  await answerCallbackQuery(cq.callbackQueryId);
+
+  if (cq.data.startsWith('sleep:')) {
+    const quality = cq.data.slice('sleep:'.length);
+    if (SLEEP_QUALITIES.includes(quality as SleepQuality)) {
+      await saveSleepQuality(todayIsoDate(), quality as SleepQuality);
+      await sendMessage(cq.chatId, `Nuit notée : ${quality}.`);
+    }
+  }
 }
 
 function todayIsoDate(): string {

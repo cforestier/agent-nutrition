@@ -12,6 +12,7 @@ import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL } from '../lib/meals.js';
 import { SET_BODY_SCAN_TOOL } from '../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL } from '../lib/rebaseline.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
+import * as sleepLib from '../lib/sleep.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -133,5 +134,39 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(sendSpy).not.toHaveBeenCalled();
     expect(converseWithToolSpy).not.toHaveBeenCalled();
+  });
+
+  it('answers the callback query and saves the sleep quality when a sleep button is tapped', async () => {
+    const answerSpy = vi.spyOn(telegram, 'answerCallbackQuery').mockResolvedValue();
+    const saveSpy = vi.spyOn(sleepLib, 'saveSleepQuality').mockResolvedValue();
+    const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const res = mockRes();
+    const body = {
+      callback_query: { id: 'cq1', data: 'sleep:medium', message: { chat: { id: 12345 } } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(res.statusCode).toBe(200);
+    expect(answerSpy).toHaveBeenCalledWith('cq1');
+    expect(saveSpy).toHaveBeenCalledWith(expect.any(String), 'medium');
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('medium'));
+  });
+
+  it('ignores a callback query from another chat', async () => {
+    const answerSpy = vi.spyOn(telegram, 'answerCallbackQuery').mockResolvedValue();
+    const saveSpy = vi.spyOn(sleepLib, 'saveSleepQuality').mockResolvedValue();
+    const res = mockRes();
+    const body = {
+      callback_query: { id: 'cq1', data: 'sleep:medium', message: { chat: { id: 999 } } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(res.statusCode).toBe(200);
+    expect(answerSpy).not.toHaveBeenCalled();
+    expect(saveSpy).not.toHaveBeenCalled();
   });
 });
