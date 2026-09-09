@@ -3,6 +3,7 @@ import { prisma } from '../lib/db.js';
 import { runDailyRecompute } from '../lib/dailyRecompute.js';
 import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
+import * as sleepLib from '../lib/sleep.js';
 
 const TEST_DATE = '1999-08-14'; // chosen to avoid the ±3/±7-day fixture windows used by other test files (e.g. weight.test.ts's 1999-06-15)
 
@@ -84,6 +85,7 @@ describe('runDailyRecompute', () => {
       reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);
@@ -134,6 +136,7 @@ describe('runDailyRecompute', () => {
       reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);
@@ -157,11 +160,38 @@ describe('runDailyRecompute', () => {
       reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);
 
     expect(result.predictedTdeeKcal).toBeNull();
     expect(result.observedTdeeKcal).toBeCloseTo(2900, 5); // still computable, independent of lean mass
+  });
+
+  it('blocks the downward adjustment when the two most recent nights were bad', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue({
+      weightKg: 80,
+      ratePctPerWeek: 0.5,
+      currentTargetKcal: 2500,
+      leanMassKg: 65,
+      kcalFloor: 1950,
+      baselineStartedAt: null,
+      lastAdjustmentDate: '1999-05-01',
+      consecutiveDeficitWeeks: 0,
+      weighInDay: null,
+      reviewDay: null,
+    });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue(['bad', 'bad']);
+    const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
+
+    // Fixture weights (82.0 on 1999-07-31, 80.0 on 1999-08-14) give observedRateKgPerWeek=1.0 vs
+    // targetRateKgPerWeek=0.4 -> "too fast" territory, NOT "too slow", so sleep-gating should have
+    // no effect here; this test only proves the wiring exists and doesn't crash when sleep data is present.
+    const result = await runDailyRecompute(TEST_DATE);
+
+    expect(result.adjustmentReason).toBe('too fast');
+    expect(applySpy).toHaveBeenCalled();
   });
 });

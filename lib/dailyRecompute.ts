@@ -2,10 +2,17 @@ import { prisma } from './db.js';
 import { addDays, weekdayOf } from './dateUtils.js';
 import { fourteenDayAverageKcal, sevenDayAverageWeight, type DailyIntake } from './calc/rolling.js';
 import { predictedTdee, observedTdee, tdeeComparison, BASE_ACTIVITY_FACTOR } from './calc/tdee.js';
-import { isBaselineLocked, isStagnating, needsScheduledDietBreak, type WeeklyWeightPoint } from './calc/baseline.js';
+import {
+  isBaselineLocked,
+  isStagnating,
+  needsScheduledDietBreak,
+  blocksDownwardAdjustmentFromSleep,
+  type WeeklyWeightPoint,
+} from './calc/baseline.js';
 import { computeAdjustment } from './calc/adjust.js';
 import { getProfileSnapshot, applyRecomputeToProfile } from './profile.js';
 import { getWeeklyDefault } from './weeklyScheduleStore.js';
+import { recentSleepQualities } from './sleep.js';
 import type { MealItem } from './meals.js';
 
 export interface DailyRecomputeResult {
@@ -57,12 +64,13 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
   const dayStart = new Date(`${windowStart}T00:00:00Z`);
   const dayEndExclusive = new Date(`${addDays(date, 1)}T00:00:00Z`);
 
-  const [meals, dayPlans, weights, weeklyDefault, profile] = await Promise.all([
+  const [meals, dayPlans, weights, weeklyDefault, profile, recentSleep] = await Promise.all([
     prisma.meal.findMany({ where: { datetime: { gte: dayStart, lt: dayEndExclusive } } }),
     prisma.dayPlan.findMany({ where: { date: { gte: windowStart, lte: date } } }),
     prisma.weight.findMany({ where: { date: { gte: addDays(date, -20), lte: addDays(date, 3) } } }),
     getWeeklyDefault(weekdayOf(date)),
     getProfileSnapshot(),
+    recentSleepQualities(),
   ]);
 
   const kcalByDate = new Map<string, number>();
@@ -139,6 +147,7 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
     const baselineLocked = profile.baselineStartedAt !== null && isBaselineLocked(profile.baselineStartedAt, date);
     const targetRateKgPerWeek = (profile.ratePctPerWeek / 100) * profile.weightKg;
     const observedRateKgPerWeek = ((weightStart - weightEnd) / 14) * 7;
+    const sleepBlocksDownward = blocksDownwardAdjustmentFromSleep(recentSleep);
 
     const result = computeAdjustment({
       currentTargetKcal: targetKcal,
@@ -148,6 +157,7 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
       isBaselineLocked: baselineLocked,
       lastAdjustmentDate: profile.lastAdjustmentDate,
       today: date,
+      sleepBlocksDownwardAdjustment: sleepBlocksDownward,
     });
 
     adjustmentReason = result.reason;
