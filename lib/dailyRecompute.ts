@@ -199,6 +199,7 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
       targetKcal,
       isExcluded,
       adherenceFlag,
+      dietBreakRecommended,
     },
     update: {
       totalKcal,
@@ -213,6 +214,7 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
       targetKcal,
       isExcluded,
       adherenceFlag,
+      dietBreakRecommended,
     },
   });
 

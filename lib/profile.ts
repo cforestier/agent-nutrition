@@ -76,6 +76,8 @@ export interface ProfileSnapshot {
   baselineStartedAt: string | null;
   lastAdjustmentDate: string | null;
   consecutiveDeficitWeeks: number;
+  weighInDay: string | null;
+  reviewDay: string | null;
 }
 
 export async function getProfileSnapshot(): Promise<ProfileSnapshot> {
@@ -89,6 +91,8 @@ export async function getProfileSnapshot(): Promise<ProfileSnapshot> {
     baselineStartedAt: profile?.baselineStartedAt ?? null,
     lastAdjustmentDate: profile?.lastAdjustmentDate ?? null,
     consecutiveDeficitWeeks: profile?.consecutiveDeficitWeeks ?? 0,
+    weighInDay: profile?.weighInDay ?? null,
+    reviewDay: profile?.reviewDay ?? null,
   };
 }
 

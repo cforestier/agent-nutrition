@@ -22,6 +22,8 @@ describe('handleSetBodyScanTool', () => {
       baselineStartedAt: null,
       lastAdjustmentDate: null,
       consecutiveDeficitWeeks: 0,
+      weighInDay: null,
+      reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
     const applySpy = vi.spyOn(profileLib, 'applyBodyScanToProfile').mockResolvedValue();
@@ -58,6 +60,8 @@ describe('handleSetBodyScanTool', () => {
       baselineStartedAt: null,
       lastAdjustmentDate: '1999-06-20',
       consecutiveDeficitWeeks: 1,
+      weighInDay: null,
+      reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
     const applySpy = vi.spyOn(profileLib, 'applyBodyScanToProfile').mockResolvedValue();

@@ -80,6 +80,8 @@ describe('runDailyRecompute', () => {
       baselineStartedAt: null,
       lastAdjustmentDate: '1999-05-01',
       consecutiveDeficitWeeks: 2,
+      weighInDay: null,
+      reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
@@ -111,6 +113,7 @@ describe('runDailyRecompute', () => {
     expect(dailyState?.observedTdee).toBeCloseTo(2900, 5);
     expect(dailyState?.targetKcal).toBeCloseTo(2600, 5);
     expect(dailyState?.isExcluded).toBe(false);
+    expect(dailyState?.dietBreakRecommended).toBe(false);
 
     const comparison = await prisma.tdeeComparison.findFirst({ where: { date: TEST_DATE } });
     expect(comparison?.predicted).toBeCloseTo(2706.2, 1);
@@ -127,6 +130,8 @@ describe('runDailyRecompute', () => {
       baselineStartedAt: '1999-08-10',
       lastAdjustmentDate: null,
       consecutiveDeficitWeeks: 0,
+      weighInDay: null,
+      reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
@@ -148,6 +153,8 @@ describe('runDailyRecompute', () => {
       baselineStartedAt: null,
       lastAdjustmentDate: '1999-05-01',
       consecutiveDeficitWeeks: 0,
+      weighInDay: null,
+      reviewDay: null,
     });
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
     vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
