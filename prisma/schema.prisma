@@ -161,3 +161,10 @@ model TdeeComparison {
   deltaPct  Float
   createdAt DateTime @default(now())
 }
+
+model SleepLog {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  date      String   @unique
+  quality   String
+  createdAt DateTime @default(now())
+}
