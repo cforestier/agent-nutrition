@@ -9,6 +9,8 @@ import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 import { LOG_WEIGHT_TOOL } from '../lib/weight.js';
 import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL } from '../lib/meals.js';
+import { SET_BODY_SCAN_TOOL } from '../lib/bodyScan.js';
+import { TRIGGER_REBASELINE_TOOL } from '../lib/rebaseline.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
@@ -84,6 +86,8 @@ describe('POST /api/telegram/webhook', () => {
         LOG_WEIGHT_TOOL,
         LOG_MEAL_TOOL,
         LOG_WEIGHED_MEAL_TOOL,
+        SET_BODY_SCAN_TOOL,
+        TRIGGER_REBASELINE_TOOL,
         FLAG_CONCERN_TOOL,
       ],
       expect.any(Function)

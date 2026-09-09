@@ -4,11 +4,11 @@ import { runDailyRecompute } from '../lib/dailyRecompute.js';
 import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 
-const TEST_DATE = '1999-06-14'; // a Monday
+const TEST_DATE = '1999-08-14'; // chosen to avoid the ±3/±7-day fixture windows used by other test files (e.g. weight.test.ts's 1999-06-15)
 
 describe('runDailyRecompute', () => {
   const mealIds: string[] = [];
-  const weightDates = ['1999-05-31', '1999-06-14'];
+  const weightDates = ['1999-07-31', '1999-08-14'];
 
   afterAll(async () => {
     await Promise.all(mealIds.map((id) => prisma.meal.delete({ where: { id } })));
@@ -21,7 +21,7 @@ describe('runDailyRecompute', () => {
     const meals = await Promise.all([
       prisma.meal.create({
         data: {
-          datetime: new Date('1999-06-01T12:00:00Z'),
+          datetime: new Date('1999-08-01T12:00:00Z'),
           inputType: 'text',
           rawDescription: 'fixture day 1',
           items: [{ name: 'test-item', estimatedGrams: 100, kcal: 2200, proteinG: 150, carbsG: 200, fatG: 70 }],
@@ -33,7 +33,7 @@ describe('runDailyRecompute', () => {
       }),
       prisma.meal.create({
         data: {
-          datetime: new Date('1999-06-10T12:00:00Z'),
+          datetime: new Date('1999-08-10T12:00:00Z'),
           inputType: 'text',
           rawDescription: 'fixture day 2',
           items: [{ name: 'test-item', estimatedGrams: 100, kcal: 2400, proteinG: 160, carbsG: 220, fatG: 75 }],
@@ -45,7 +45,7 @@ describe('runDailyRecompute', () => {
       }),
       prisma.meal.create({
         data: {
-          datetime: new Date('1999-06-14T12:00:00Z'),
+          datetime: new Date('1999-08-14T12:00:00Z'),
           inputType: 'text',
           rawDescription: 'fixture day 3 (today)',
           items: [{ name: 'test-item', estimatedGrams: 100, kcal: 800, proteinG: 50, carbsG: 90, fatG: 20 }],
@@ -59,13 +59,13 @@ describe('runDailyRecompute', () => {
     mealIds.push(...meals.map((m) => m.id));
 
     await prisma.weight.upsert({
-      where: { date: '1999-05-31' },
-      create: { date: '1999-05-31', weightKg: 82.0, source: 'manual' },
+      where: { date: '1999-07-31' },
+      create: { date: '1999-07-31', weightKg: 82.0, source: 'manual' },
       update: { weightKg: 82.0 },
     });
     await prisma.weight.upsert({
-      where: { date: '1999-06-14' },
-      create: { date: '1999-06-14', weightKg: 80.0, source: 'manual' },
+      where: { date: '1999-08-14' },
+      create: { date: '1999-08-14', weightKg: 80.0, source: 'manual' },
       update: { weightKg: 80.0 },
     });
   });
@@ -124,7 +124,7 @@ describe('runDailyRecompute', () => {
       currentTargetKcal: 2500,
       leanMassKg: 65,
       kcalFloor: 1950,
-      baselineStartedAt: '1999-06-10',
+      baselineStartedAt: '1999-08-10',
       lastAdjustmentDate: null,
       consecutiveDeficitWeeks: 0,
     });
