@@ -64,3 +64,12 @@ model WeeklyDefault {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model Weight {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  date      String   @unique
+  weightKg  Float
+  source    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
