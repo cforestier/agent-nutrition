@@ -18,9 +18,11 @@ export async function hasWeeklySchedule(): Promise<boolean> {
   return count > 0;
 }
 
-export async function getWeeklyDefault(weekday: Weekday): Promise<{ avgKcal: number } | null> {
+export async function getWeeklyDefault(
+  weekday: Weekday
+): Promise<{ avgKcal: number; activityType: string } | null> {
   const entry = await prisma.weeklyDefault.findUnique({ where: { weekday } });
-  return entry ? { avgKcal: entry.avgKcal } : null;
+  return entry ? { avgKcal: entry.avgKcal, activityType: entry.activityType } : null;
 }
 
 export async function weeklyScheduleSystemPromptAddition(): Promise<string> {

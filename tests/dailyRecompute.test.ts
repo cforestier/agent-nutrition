@@ -83,7 +83,7 @@ describe('runDailyRecompute', () => {
       weighInDay: null,
       reviewDay: null,
     });
-    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);
@@ -133,7 +133,7 @@ describe('runDailyRecompute', () => {
       weighInDay: null,
       reviewDay: null,
     });
-    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
     const applySpy = vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);
@@ -156,7 +156,7 @@ describe('runDailyRecompute', () => {
       weighInDay: null,
       reviewDay: null,
     });
-    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
     vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
 
     const result = await runDailyRecompute(TEST_DATE);

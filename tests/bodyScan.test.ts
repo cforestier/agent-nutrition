@@ -25,7 +25,7 @@ describe('handleSetBodyScanTool', () => {
       weighInDay: null,
       reviewDay: null,
     });
-    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
     const applySpy = vi.spyOn(profileLib, 'applyBodyScanToProfile').mockResolvedValue();
 
     const result = await handleSetBodyScanTool({
@@ -63,7 +63,7 @@ describe('handleSetBodyScanTool', () => {
       weighInDay: null,
       reviewDay: null,
     });
-    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400 });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
     const applySpy = vi.spyOn(profileLib, 'applyBodyScanToProfile').mockResolvedValue();
 
     await handleSetBodyScanTool({ date: `${testDate}-again`, weightKg: 81, leanMassKg: 66 });
