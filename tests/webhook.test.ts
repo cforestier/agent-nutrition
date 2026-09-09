@@ -5,6 +5,8 @@ import * as messagesLib from '../lib/messages.js';
 import * as profileLib from '../lib/profile.js';
 import * as onboardingLib from '../lib/onboarding.js';
 import * as scenariosLib from '../lib/scenarios.js';
+import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
+import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -55,6 +57,7 @@ describe('POST /api/telegram/webhook', () => {
   it("responds 200 and replies with Claude's answer from the allowed chat", async () => {
     vi.spyOn(profileLib, 'isOnboardingBasicsComplete').mockResolvedValue(true);
     vi.spyOn(scenariosLib, 'buildScenarioSystemPrompt').mockResolvedValue('full system prompt');
+    vi.spyOn(weeklyScheduleStoreLib, 'weeklyScheduleSystemPromptAddition').mockResolvedValue('');
     vi.spyOn(messagesLib, 'recentMessages').mockResolvedValue([]);
     const converseWithToolSpy = vi
       .spyOn(claudeLib, 'converseWithTool')
@@ -72,8 +75,8 @@ describe('POST /api/telegram/webhook', () => {
       'full system prompt',
       [],
       'salut',
-      scenariosLib.SCENARIO_TOOLS,
-      scenariosLib.handleScenarioTool
+      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL],
+      expect.any(Function)
     );
     expect(saveSpy).toHaveBeenCalledWith('user', 'salut');
     expect(saveSpy).toHaveBeenCalledWith('assistant', 'Bonjour !', 5);

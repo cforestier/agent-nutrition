@@ -7,6 +7,8 @@ import { isOnboardingBasicsComplete } from '../../lib/profile.js';
 import { ONBOARDING_SYSTEM_PROMPT, ONBOARDING_TOOL, handleOnboardingTool } from '../../lib/onboarding.js';
 import { SYSTEM_PROMPT } from '../../lib/prompts.js';
 import { SCENARIO_TOOLS, handleScenarioTool, buildScenarioSystemPrompt } from '../../lib/scenarios.js';
+import { SET_WEEKLY_SCHEDULE_TOOL, handleWeeklyScheduleTool } from '../../lib/weeklySchedule.js';
+import { weeklyScheduleSystemPromptAddition } from '../../lib/weeklyScheduleStore.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -24,17 +26,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   waitUntil(handleMessage(parsed.chatId, parsed.text));
 }
 
+const GENERAL_CHAT_TOOLS = [...SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL];
+
+async function handleGeneralChatTool(name: string, input: Record<string, unknown>): Promise<string> {
+  if (name === 'set_weekly_schedule') return handleWeeklyScheduleTool(input);
+  return handleScenarioTool(name, input);
+}
+
 async function handleMessage(chatId: number, text: string): Promise<void> {
   const history = await recentMessages(10);
   const onboardingDone = await isOnboardingBasicsComplete();
 
   const result = onboardingDone
     ? await converseWithTool(
-        await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate()),
+        (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
+          (await weeklyScheduleSystemPromptAddition()),
         history,
         text,
-        SCENARIO_TOOLS,
-        handleScenarioTool
+        GENERAL_CHAT_TOOLS,
+        handleGeneralChatTool
       )
     : await converseWithTool(
         ONBOARDING_SYSTEM_PROMPT,
