@@ -8,7 +8,7 @@ import * as scenariosLib from '../lib/scenarios.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 import { LOG_WEIGHT_TOOL } from '../lib/weight.js';
-import { LOG_MEAL_TOOL } from '../lib/meals.js';
+import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL } from '../lib/meals.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
@@ -78,7 +78,14 @@ describe('POST /api/telegram/webhook', () => {
       'full system prompt' + SAFETY_GUARDRAILS_PROMPT,
       [],
       'salut',
-      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL, LOG_MEAL_TOOL, FLAG_CONCERN_TOOL],
+      [
+        ...scenariosLib.SCENARIO_TOOLS,
+        SET_WEEKLY_SCHEDULE_TOOL,
+        LOG_WEIGHT_TOOL,
+        LOG_MEAL_TOOL,
+        LOG_WEIGHED_MEAL_TOOL,
+        FLAG_CONCERN_TOOL,
+      ],
       expect.any(Function)
     );
     expect(saveSpy).toHaveBeenCalledWith('user', 'salut');
