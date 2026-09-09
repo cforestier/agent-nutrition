@@ -30,3 +30,11 @@ Full functional spec: `docs/spec-agent-nutrition-v4.md`.
 - `CRON_SECRET` — same value as the `CRON_SECRET` env var set in Vercel
 
 Until `ANTHROPIC_API_KEY` is available and the project is deployed, this route exists but isn't reachable in production yet.
+
+## Notification tick (step 9)
+
+`/api/cron/tick` runs every 15 minutes via `.github/workflows/tick.yml` and sends anti-spammed, conditional Telegram nudges (day-plan prompt, weekly weigh-in, weekly review, no-meal-24h reminder, diet-break proposal). It needs one more repo secret alongside `CRON_SECRET` (already set for step 8):
+
+- `TICK_URL` — `https://<your-vercel-domain>/api/cron/tick`
+
+Note: GitHub Actions scheduled workflows can run late under load — the spec already accounts for this ("fenêtre large, cron en retard").
