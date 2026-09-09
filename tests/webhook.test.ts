@@ -4,6 +4,7 @@ import * as claudeLib from '../lib/claude.js';
 import * as messagesLib from '../lib/messages.js';
 import * as profileLib from '../lib/profile.js';
 import * as onboardingLib from '../lib/onboarding.js';
+import * as scenariosLib from '../lib/scenarios.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -53,8 +54,11 @@ describe('POST /api/telegram/webhook', () => {
 
   it("responds 200 and replies with Claude's answer from the allowed chat", async () => {
     vi.spyOn(profileLib, 'isOnboardingBasicsComplete').mockResolvedValue(true);
+    vi.spyOn(scenariosLib, 'buildScenarioSystemPrompt').mockResolvedValue('full system prompt');
     vi.spyOn(messagesLib, 'recentMessages').mockResolvedValue([]);
-    vi.spyOn(claudeLib, 'converse').mockResolvedValue({ text: 'Bonjour !', outputTokens: 5 });
+    const converseWithToolSpy = vi
+      .spyOn(claudeLib, 'converseWithTool')
+      .mockResolvedValue({ text: 'Bonjour !', outputTokens: 5 });
     const saveSpy = vi.spyOn(messagesLib, 'saveMessage').mockResolvedValue();
     const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
     const res = mockRes();
@@ -64,7 +68,13 @@ describe('POST /api/telegram/webhook', () => {
     await flushBackgroundTasks();
 
     expect(res.statusCode).toBe(200);
-    expect(claudeLib.converse).toHaveBeenCalledWith(expect.any(String), [{ role: 'user', content: 'salut' }]);
+    expect(converseWithToolSpy).toHaveBeenCalledWith(
+      'full system prompt',
+      [],
+      'salut',
+      scenariosLib.SCENARIO_TOOLS,
+      scenariosLib.handleScenarioTool
+    );
     expect(saveSpy).toHaveBeenCalledWith('user', 'salut');
     expect(saveSpy).toHaveBeenCalledWith('assistant', 'Bonjour !', 5);
     expect(sendSpy).toHaveBeenCalledWith(12345, 'Bonjour !');
@@ -76,7 +86,6 @@ describe('POST /api/telegram/webhook', () => {
     const converseWithToolSpy = vi
       .spyOn(claudeLib, 'converseWithTool')
       .mockResolvedValue({ text: 'Quel est ton poids ?', outputTokens: 4 });
-    const converseSpy = vi.spyOn(claudeLib, 'converse');
     vi.spyOn(messagesLib, 'saveMessage').mockResolvedValue();
     const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
     const res = mockRes();
@@ -89,16 +98,15 @@ describe('POST /api/telegram/webhook', () => {
       onboardingLib.ONBOARDING_SYSTEM_PROMPT,
       [],
       '80kg',
-      onboardingLib.ONBOARDING_TOOL,
-      onboardingLib.handleOnboardingTool
+      [onboardingLib.ONBOARDING_TOOL],
+      expect.any(Function)
     );
-    expect(converseSpy).not.toHaveBeenCalled();
     expect(sendSpy).toHaveBeenCalledWith(12345, 'Quel est ton poids ?');
   });
 
   it('responds 200 but does nothing for a message from another chat', async () => {
     const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
-    const converseSpy = vi.spyOn(claudeLib, 'converse');
+    const converseWithToolSpy = vi.spyOn(claudeLib, 'converseWithTool');
     const res = mockRes();
     const body = { message: { chat: { id: 999 }, text: 'salut' } };
 
@@ -107,6 +115,6 @@ describe('POST /api/telegram/webhook', () => {
 
     expect(res.statusCode).toBe(200);
     expect(sendSpy).not.toHaveBeenCalled();
-    expect(converseSpy).not.toHaveBeenCalled();
+    expect(converseWithToolSpy).not.toHaveBeenCalled();
   });
 });
