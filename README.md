@@ -21,3 +21,12 @@ Full functional spec: `docs/spec-agent-nutrition-v4.md`.
    curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-vercel-domain>/api/telegram/webhook"
    ```
 4. Send any text message to the bot from your own Telegram account — you should get `echo: <your message>` back. Messages from any other chat id are silently ignored.
+
+## Daily recompute cron (step 8)
+
+`/api/cron/daily-recompute` recomputes yesterday's TDEE estimates and adjusts `currentTargetKcal`. It's triggered by `.github/workflows/daily-recompute.yml`, which needs two repo secrets set manually (GitHub → Settings → Secrets and variables → Actions):
+
+- `RECOMPUTE_URL` — `https://<your-vercel-domain>/api/cron/daily-recompute`
+- `CRON_SECRET` — same value as the `CRON_SECRET` env var set in Vercel
+
+Until `ANTHROPIC_API_KEY` is available and the project is deployed, this route exists but isn't reachable in production yet.
