@@ -9,6 +9,7 @@ import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 import { LOG_WEIGHT_TOOL } from '../lib/weight.js';
 import { LOG_MEAL_TOOL } from '../lib/meals.js';
+import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -74,10 +75,10 @@ describe('POST /api/telegram/webhook', () => {
 
     expect(res.statusCode).toBe(200);
     expect(converseWithToolSpy).toHaveBeenCalledWith(
-      'full system prompt',
+      'full system prompt' + SAFETY_GUARDRAILS_PROMPT,
       [],
       'salut',
-      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL, LOG_MEAL_TOOL],
+      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL, LOG_MEAL_TOOL, FLAG_CONCERN_TOOL],
       expect.any(Function)
     );
     expect(saveSpy).toHaveBeenCalledWith('user', 'salut');
@@ -100,10 +101,10 @@ describe('POST /api/telegram/webhook', () => {
     await flushBackgroundTasks();
 
     expect(converseWithToolSpy).toHaveBeenCalledWith(
-      onboardingLib.ONBOARDING_SYSTEM_PROMPT,
+      onboardingLib.ONBOARDING_SYSTEM_PROMPT + SAFETY_GUARDRAILS_PROMPT,
       [],
       '80kg',
-      [onboardingLib.ONBOARDING_TOOL],
+      [onboardingLib.ONBOARDING_TOOL, FLAG_CONCERN_TOOL],
       expect.any(Function)
     );
     expect(sendSpy).toHaveBeenCalledWith(12345, 'Quel est ton poids ?');
