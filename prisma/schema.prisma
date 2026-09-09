@@ -90,3 +90,15 @@ model Meal {
   userCorrected  Boolean  @default(false)
   createdAt      DateTime @default(now())
 }
+
+model Food {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  ciqualCode     String   @unique
+  name           String
+  nameNormalized String
+  kcalPer100g    Float
+  proteinPer100g Float
+  carbsPer100g   Float
+  fatPer100g     Float
+  createdAt      DateTime @default(now())
+}
