@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import type { WeeklyScheduleEntry } from './weeklySchedule.js';
+import type { WeeklyScheduleEntry, Weekday } from './weeklySchedule.js';
 
 export async function saveWeeklySchedule(entries: WeeklyScheduleEntry[]): Promise<void> {
   await Promise.all(
@@ -16,6 +16,11 @@ export async function saveWeeklySchedule(entries: WeeklyScheduleEntry[]): Promis
 export async function hasWeeklySchedule(): Promise<boolean> {
   const count = await prisma.weeklyDefault.count();
   return count > 0;
+}
+
+export async function getWeeklyDefault(weekday: Weekday): Promise<{ avgKcal: number } | null> {
+  const entry = await prisma.weeklyDefault.findUnique({ where: { weekday } });
+  return entry ? { avgKcal: entry.avgKcal } : null;
 }
 
 export async function weeklyScheduleSystemPromptAddition(): Promise<string> {
