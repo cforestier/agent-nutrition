@@ -73,9 +73,9 @@ describe('converseWithTool', () => {
 
     const handleTool = vi.fn().mockResolvedValue('tool result text');
 
-    const result = await converseWithTool('system', [], 'salut', tool, handleTool);
+    const result = await converseWithTool('system', [], 'salut', [tool], handleTool);
 
-    expect(handleTool).toHaveBeenCalledWith({ foo: 'bar' });
+    expect(handleTool).toHaveBeenCalledWith('test_tool', { foo: 'bar' });
     expect(result).toEqual({ text: 'Terminé.', outputTokens: 7 });
   });
 
@@ -87,10 +87,35 @@ describe('converseWithTool', () => {
     });
 
     const handleTool = vi.fn();
-    const result = await converseWithTool('system', [], 'je veux commencer', tool, handleTool);
+    const result = await converseWithTool('system', [], 'je veux commencer', [tool], handleTool);
 
     expect(handleTool).not.toHaveBeenCalled();
     expect(result).toEqual({ text: 'Quel est ton poids actuel ?', outputTokens: 6 });
+  });
+
+  it('dispatches to the correct tool by name when multiple tools are offered', async () => {
+    createMock
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', id: 'tool_2', name: 'second_tool', input: { x: 1 } }],
+        usage: { output_tokens: 2 },
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'ok' }],
+        usage: { output_tokens: 1 },
+      });
+
+    const secondTool: ToolDefinition = {
+      name: 'second_tool',
+      description: '',
+      input_schema: { type: 'object', properties: {} },
+    };
+    const handleTool = vi.fn().mockResolvedValue('handled');
+
+    await converseWithTool('system', [], 'salut', [tool, secondTool], handleTool);
+
+    expect(handleTool).toHaveBeenCalledWith('second_tool', { x: 1 });
   });
 
   it('stops after the iteration cap if the model keeps calling tools', async () => {
@@ -101,7 +126,7 @@ describe('converseWithTool', () => {
     });
     const handleTool = vi.fn().mockResolvedValue('ok');
 
-    const result = await converseWithTool('system', [], 'salut', tool, handleTool);
+    const result = await converseWithTool('system', [], 'salut', [tool], handleTool);
 
     expect(result.text).toBe("Désolé, je n'ai pas réussi à traiter ta demande, réessaie.");
   });

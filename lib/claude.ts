@@ -42,7 +42,7 @@ export interface ToolDefinition {
   };
 }
 
-export type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+export type ToolHandler = (toolName: string, input: Record<string, unknown>) => Promise<string>;
 
 const MAX_TOOL_ITERATIONS = 4;
 
@@ -50,7 +50,7 @@ export async function converseWithTool(
   systemPrompt: string,
   history: ChatMessage[],
   userText: string,
-  tool: ToolDefinition,
+  tools: ToolDefinition[],
   handleTool: ToolHandler
 ): Promise<ConverseResult> {
   const messages: Anthropic.MessageParam[] = [
@@ -65,7 +65,7 @@ export async function converseWithTool(
       model: MODEL,
       max_tokens: MAX_TOKENS,
       system: systemPrompt,
-      tools: [tool],
+      tools,
       messages,
     });
     totalOutputTokens += response.usage.output_tokens;
@@ -87,7 +87,7 @@ export async function converseWithTool(
       return { text: '', outputTokens: totalOutputTokens };
     }
 
-    const resultContent = await handleTool(toolUseBlock.input as Record<string, unknown>);
+    const resultContent = await handleTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>);
     messages.push({
       role: 'user',
       content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: resultContent }],
