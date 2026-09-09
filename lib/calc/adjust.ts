@@ -8,6 +8,7 @@ export interface AdjustmentInput {
   isBaselineLocked: boolean;
   lastAdjustmentDate: string | null;
   today: string;
+  sleepBlocksDownwardAdjustment: boolean;
 }
 
 export interface AdjustmentResult {
@@ -40,6 +41,9 @@ export function computeAdjustment(input: AdjustmentInput): AdjustmentResult {
   }
 
   if (input.observedRateKgPerWeek < input.targetRateKgPerWeek) {
+    if (input.sleepBlocksDownwardAdjustment) {
+      return { newTargetKcal: input.currentTargetKcal, changed: false, reason: 'sleep blocks downward adjustment' };
+    }
     const newTargetKcal = Math.max(input.kcalFloor, input.currentTargetKcal - MAX_STEP_KCAL);
     return { newTargetKcal, changed: newTargetKcal !== input.currentTargetKcal, reason: 'too slow' };
   }

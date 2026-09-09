@@ -10,6 +10,7 @@ const base: AdjustmentInput = {
   isBaselineLocked: false,
   lastAdjustmentDate: null,
   today: '2026-09-09',
+  sleepBlocksDownwardAdjustment: false,
 };
 
 describe('computeAdjustment', () => {
@@ -55,6 +56,16 @@ describe('computeAdjustment', () => {
 
   it('increases the target when losing too fast', () => {
     const result = computeAdjustment({ ...base, observedRateKgPerWeek: 0.9 });
+    expect(result).toEqual({ newTargetKcal: 2600, changed: true, reason: 'too fast' });
+  });
+
+  it('blocks a downward adjustment when two bad nights were logged, even if losing too slowly', () => {
+    const result = computeAdjustment({ ...base, observedRateKgPerWeek: 0.3, sleepBlocksDownwardAdjustment: true });
+    expect(result).toEqual({ newTargetKcal: 2500, changed: false, reason: 'sleep blocks downward adjustment' });
+  });
+
+  it('does not block an upward adjustment, even with two bad nights logged', () => {
+    const result = computeAdjustment({ ...base, observedRateKgPerWeek: 0.9, sleepBlocksDownwardAdjustment: true });
     expect(result).toEqual({ newTargetKcal: 2600, changed: true, reason: 'too fast' });
   });
 });
