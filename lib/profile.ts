@@ -51,3 +51,18 @@ export async function isOnboardingBasicsComplete(): Promise<boolean> {
   const profile = await prisma.profile.findFirst();
   return profile?.onboardingBasicsComplete ?? false;
 }
+
+export async function flagEdSignal(reason: string): Promise<void> {
+  const existing = await prisma.profile.findFirst();
+  const data = { edSignalFlagged: true, edSignalNote: reason };
+  if (existing) {
+    await prisma.profile.update({ where: { id: existing.id }, data });
+  } else {
+    await prisma.profile.create({ data });
+  }
+}
+
+export async function isEdSignalFlagged(): Promise<boolean> {
+  const profile = await prisma.profile.findFirst();
+  return profile?.edSignalFlagged ?? false;
+}

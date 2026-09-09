@@ -23,6 +23,8 @@ model Profile {
   restDayPresent           Boolean?
   onboardingBasicsComplete Boolean   @default(false)
   onboardingComplete       Boolean   @default(false)
+  edSignalFlagged          Boolean   @default(false)
+  edSignalNote             String?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 }
