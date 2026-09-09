@@ -8,6 +8,7 @@ import * as scenariosLib from '../lib/scenarios.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 import { LOG_WEIGHT_TOOL } from '../lib/weight.js';
+import { LOG_MEAL_TOOL } from '../lib/meals.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -76,7 +77,7 @@ describe('POST /api/telegram/webhook', () => {
       'full system prompt',
       [],
       'salut',
-      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL],
+      [...scenariosLib.SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL, LOG_MEAL_TOOL],
       expect.any(Function)
     );
     expect(saveSpy).toHaveBeenCalledWith('user', 'salut');

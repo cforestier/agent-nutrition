@@ -10,6 +10,7 @@ import { SCENARIO_TOOLS, handleScenarioTool, buildScenarioSystemPrompt } from '.
 import { SET_WEEKLY_SCHEDULE_TOOL, handleWeeklyScheduleTool } from '../../lib/weeklySchedule.js';
 import { weeklyScheduleSystemPromptAddition } from '../../lib/weeklyScheduleStore.js';
 import { LOG_WEIGHT_TOOL, handleLogWeightTool } from '../../lib/weight.js';
+import { LOG_MEAL_TOOL, handleLogMealTool } from '../../lib/meals.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -27,11 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   waitUntil(handleMessage(parsed.chatId, parsed.text));
 }
 
-const GENERAL_CHAT_TOOLS = [...SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL];
+const GENERAL_CHAT_TOOLS = [...SCENARIO_TOOLS, SET_WEEKLY_SCHEDULE_TOOL, LOG_WEIGHT_TOOL, LOG_MEAL_TOOL];
 
 async function handleGeneralChatTool(name: string, input: Record<string, unknown>): Promise<string> {
   if (name === 'set_weekly_schedule') return handleWeeklyScheduleTool(input);
   if (name === 'log_weight') return handleLogWeightTool(input);
+  if (name === 'log_meal') return handleLogMealTool(input);
   return handleScenarioTool(name, input);
 }
 
