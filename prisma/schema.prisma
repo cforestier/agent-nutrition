@@ -73,3 +73,18 @@ model Weight {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model Meal {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  datetime       DateTime @default(now())
+  inputType      String
+  telegramFileId String?
+  rawDescription String
+  items          Json
+  kcalLow        Float
+  kcalMid        Float
+  kcalHigh       Float
+  confidence     String
+  userCorrected  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
