@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
 import { parseUpdate, sendMessage } from '../../lib/telegram.js';
+import { converse } from '../../lib/claude.js';
+import { SYSTEM_PROMPT } from '../../lib/prompts.js';
+import { recentMessages, saveMessage } from '../../lib/messages.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -15,5 +18,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!parsed) return;
 
-  waitUntil(sendMessage(parsed.chatId, `echo: ${parsed.text}`));
+  waitUntil(handleMessage(parsed.chatId, parsed.text));
+}
+
+async function handleMessage(chatId: number, text: string): Promise<void> {
+  const history = await recentMessages(10);
+  const result = await converse(SYSTEM_PROMPT, [...history, { role: 'user', content: text }]);
+
+  await saveMessage('user', text);
+  await saveMessage('assistant', result.text, result.outputTokens);
+  await sendMessage(chatId, result.text);
 }

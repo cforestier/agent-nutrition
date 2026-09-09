@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as telegram from '../lib/telegram.js';
+import * as claudeLib from '../lib/claude.js';
+import * as messagesLib from '../lib/messages.js';
+
+const backgroundTasks: Promise<unknown>[] = [];
 
 vi.mock('@vercel/functions', () => ({
-  waitUntil: (promise: Promise<unknown>) => promise,
+  waitUntil: (promise: Promise<unknown>) => {
+    backgroundTasks.push(promise);
+    return promise;
+  },
 }));
 
 const handler = (await import('../api/telegram/webhook.js')).default;
@@ -25,9 +32,15 @@ function mockRes() {
   };
 }
 
+async function flushBackgroundTasks() {
+  await Promise.all(backgroundTasks);
+  backgroundTasks.length = 0;
+}
+
 describe('POST /api/telegram/webhook', () => {
   beforeEach(() => {
     process.env.TELEGRAM_CHAT_ID = '12345';
+    backgroundTasks.length = 0;
   });
 
   it('rejects non-POST requests', async () => {
@@ -36,25 +49,35 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(405);
   });
 
-  it('responds 200 and echoes back text from the allowed chat', async () => {
+  it("responds 200 and replies with Claude's answer from the allowed chat", async () => {
+    vi.spyOn(messagesLib, 'recentMessages').mockResolvedValue([]);
+    vi.spyOn(claudeLib, 'converse').mockResolvedValue({ text: 'Bonjour !', outputTokens: 5 });
+    const saveSpy = vi.spyOn(messagesLib, 'saveMessage').mockResolvedValue();
     const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
     const res = mockRes();
-    const body = { message: { chat: { id: 12345 }, text: 'hello' } };
+    const body = { message: { chat: { id: 12345 }, text: 'salut' } };
 
     await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
 
     expect(res.statusCode).toBe(200);
-    expect(sendSpy).toHaveBeenCalledWith(12345, 'echo: hello');
+    expect(claudeLib.converse).toHaveBeenCalledWith(expect.any(String), [{ role: 'user', content: 'salut' }]);
+    expect(saveSpy).toHaveBeenCalledWith('user', 'salut');
+    expect(saveSpy).toHaveBeenCalledWith('assistant', 'Bonjour !', 5);
+    expect(sendSpy).toHaveBeenCalledWith(12345, 'Bonjour !');
   });
 
-  it('responds 200 but sends nothing for a message from another chat', async () => {
+  it('responds 200 but does nothing for a message from another chat', async () => {
     const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const converseSpy = vi.spyOn(claudeLib, 'converse');
     const res = mockRes();
-    const body = { message: { chat: { id: 999 }, text: 'hello' } };
+    const body = { message: { chat: { id: 999 }, text: 'salut' } };
 
     await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
 
     expect(res.statusCode).toBe(200);
     expect(sendSpy).not.toHaveBeenCalled();
+    expect(converseSpy).not.toHaveBeenCalled();
   });
 });
