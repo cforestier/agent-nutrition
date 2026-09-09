@@ -31,3 +31,68 @@ export async function converse(systemPrompt: string, messages: ChatMessage[]): P
   const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
   return { text, outputTokens: response.usage.output_tokens };
 }
+
+export interface ToolDefinition {
+  name: string;
+  description: string;
+  input_schema: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+export type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
+
+const MAX_TOOL_ITERATIONS = 4;
+
+export async function converseWithTool(
+  systemPrompt: string,
+  history: ChatMessage[],
+  userText: string,
+  tool: ToolDefinition,
+  handleTool: ToolHandler
+): Promise<ConverseResult> {
+  const messages: Anthropic.MessageParam[] = [
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userText },
+  ];
+
+  let totalOutputTokens = 0;
+
+  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    const response = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
+      system: systemPrompt,
+      tools: [tool],
+      messages,
+    });
+    totalOutputTokens += response.usage.output_tokens;
+
+    if (response.stop_reason === 'refusal') {
+      return { text: 'Désolé, je ne peux pas répondre à ça.', outputTokens: totalOutputTokens };
+    }
+
+    if (response.stop_reason !== 'tool_use') {
+      const textBlock = response.content.find((block) => block.type === 'text');
+      const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+      return { text, outputTokens: totalOutputTokens };
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+
+    const toolUseBlock = response.content.find((block) => block.type === 'tool_use');
+    if (!toolUseBlock || toolUseBlock.type !== 'tool_use') {
+      return { text: '', outputTokens: totalOutputTokens };
+    }
+
+    const resultContent = await handleTool(toolUseBlock.input as Record<string, unknown>);
+    messages.push({
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: resultContent }],
+    });
+  }
+
+  return { text: "Désolé, je n'ai pas réussi à traiter ta demande, réessaie.", outputTokens: totalOutputTokens };
+}
