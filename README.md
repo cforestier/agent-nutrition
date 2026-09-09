@@ -1,0 +1,23 @@
+# agent-nutrition
+
+Personal, single-user nutrition/training tracker driven by a Telegram bot.
+Full functional spec: `docs/spec-agent-nutrition-v4.md`.
+
+## Setup
+
+1. `npm install`
+2. Copy `.env.example` to `.env` and fill in:
+   - `DATABASE_URL` — MongoDB Atlas connection string (Prisma-compatible, `mongodb+srv://...`)
+   - `TELEGRAM_BOT_TOKEN` — from @BotFather
+   - `TELEGRAM_CHAT_ID` — your own Telegram numeric chat id (only this id gets responses)
+3. `npm test` — runs unit tests, including a live check that Prisma can reach MongoDB.
+
+## Deploying the webhook (step 1)
+
+1. `vercel link` (creates/links the Vercel project) then `vercel env add` for each variable above, or set them in the Vercel dashboard → Settings → Environment Variables.
+2. `vercel deploy --prod`
+3. Register the webhook with Telegram (replace values):
+   ```bash
+   curl "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<your-vercel-domain>/api/telegram/webhook"
+   ```
+4. Send any text message to the bot from your own Telegram account — you should get `echo: <your message>` back. Messages from any other chat id are silently ignored.
