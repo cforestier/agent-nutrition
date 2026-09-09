@@ -9,7 +9,8 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@prisma/client": "^5.20.0"
+    "@prisma/client": "^5.20.0",
+    "@vercel/functions": "^1.5.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

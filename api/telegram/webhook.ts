@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { waitUntil } from '@vercel/functions';
 import { parseUpdate, sendMessage } from '../../lib/telegram.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -7,11 +8,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  res.status(200).json({ ok: true });
-
   const allowedChatId = Number(process.env.TELEGRAM_CHAT_ID);
   const parsed = parseUpdate(req.body, allowedChatId);
+
+  res.status(200).json({ ok: true });
+
   if (!parsed) return;
 
-  await sendMessage(parsed.chatId, `echo: ${parsed.text}`);
+  waitUntil(sendMessage(parsed.chatId, `echo: ${parsed.text}`));
 }
