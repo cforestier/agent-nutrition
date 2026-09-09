@@ -1,6 +1,6 @@
 import { shouldRefuseProgram } from './calc/guardrails.js';
 import { resolveGoal, proteinTargetRangeG } from './calc/baseline.js';
-import { saveOnboardingProfile } from './profile.js';
+import { saveOnboardingProfile, isEdSignalFlagged } from './profile.js';
 import type { ToolDefinition } from './claude.js';
 
 export const ONBOARDING_TOOL: ToolDefinition = {
@@ -93,6 +93,10 @@ export function resolveOnboardingDecision(input: OnboardingInput): OnboardingDec
 }
 
 export async function handleOnboardingTool(rawInput: Record<string, unknown>): Promise<string> {
+  if (await isEdSignalFlagged()) {
+    return "Un signal de préoccupation a déjà été noté précédemment. N'annonce aucune cible chiffrée pour l'instant ; exprime ton inquiétude avec bienveillance et oriente vers un professionnel de santé.";
+  }
+
   const input = rawInput as unknown as OnboardingInput;
   const decision = resolveOnboardingDecision(input);
 

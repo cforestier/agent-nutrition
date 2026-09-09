@@ -47,6 +47,7 @@ describe('resolveOnboardingDecision', () => {
 describe('handleOnboardingTool', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(profileLib, 'isEdSignalFlagged').mockResolvedValue(false);
   });
 
   it('saves the profile and returns a confirmation message when accepted', async () => {
@@ -69,5 +70,15 @@ describe('handleOnboardingTool', () => {
 
     expect(saveSpy).not.toHaveBeenCalled();
     expect(result).toContain('REFUS');
+  });
+
+  it('refuses to give a numeric target when an ED signal was previously flagged', async () => {
+    vi.spyOn(profileLib, 'isEdSignalFlagged').mockResolvedValue(true);
+    const saveSpy = vi.spyOn(profileLib, 'saveOnboardingProfile').mockResolvedValue();
+
+    const result = await handleOnboardingTool({ ...baseInput });
+
+    expect(saveSpy).not.toHaveBeenCalled();
+    expect(result).not.toMatch(/\d/);
   });
 });
