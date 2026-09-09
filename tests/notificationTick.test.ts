@@ -41,18 +41,21 @@ describe('runNotificationTick', () => {
     expect(sendSpy).not.toHaveBeenCalled();
   });
 
-  it('sends the day-plan prompt in the morning when nothing else is set up', async () => {
+  it('sends the day-plan prompt (with sleep buttons) in the morning when nothing else is set up', async () => {
     vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile());
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
     vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T07:00:00Z') });
     vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
-    const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+    const sendSpy = vi.spyOn(telegramLib, 'sendMessageWithKeyboard').mockResolvedValue();
 
-    // Europe/Zurich in September is UTC+2 (CEST); 08:30 local time.
     const result = await runNotificationTick(new Date('1999-09-05T06:30:00Z'), 12345);
 
     expect(result.sent.map((s) => s.rule)).toEqual(['day_plan_prompt']);
-    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining("prévu aujourd'hui"));
+    expect(sendSpy).toHaveBeenCalledWith(
+      12345,
+      expect.stringContaining("prévu aujourd'hui"),
+      expect.arrayContaining([{ text: 'Bonne', callback_data: 'sleep:good' }])
+    );
 
     const recorded = await prisma.notification.findUnique({
       where: { date_rule: { date: TEST_DATE, rule: 'day_plan_prompt' } },

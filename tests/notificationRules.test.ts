@@ -26,6 +26,12 @@ describe('ruleDayPlanPrompt', () => {
   it('fires in the morning when the day plan is not confirmed', () => {
     const result = ruleDayPlanPrompt({ ...baseCtx, todayDayPlanConfirmed: false });
     expect(result?.rule).toBe('day_plan_prompt');
+    expect(result?.message).toContain('Nuit ?');
+    expect(result?.buttons).toEqual([
+      { text: 'Bonne', callback_data: 'sleep:good' },
+      { text: 'Moyenne', callback_data: 'sleep:medium' },
+      { text: 'Mauvaise', callback_data: 'sleep:bad' },
+    ]);
   });
 
   it('includes the weekly-default activity hint when known', () => {

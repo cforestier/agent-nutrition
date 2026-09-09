@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { sendMessage } from './telegram.js';
+import { sendMessage, sendMessageWithKeyboard } from './telegram.js';
 import { weekdayOf } from './dateUtils.js';
 import { getProfileSnapshot } from './profile.js';
 import { getWeeklyDefault } from './weeklyScheduleStore.js';
@@ -76,7 +76,11 @@ export async function runNotificationTick(now: Date, chatId: number): Promise<Ti
     if (!result) continue;
     if (await hasRuleFiredToday(dateIso, result.rule)) continue;
 
-    await sendMessage(chatId, result.message);
+    if (result.buttons) {
+      await sendMessageWithKeyboard(chatId, result.message, result.buttons);
+    } else {
+      await sendMessage(chatId, result.message);
+    }
     await recordNotificationSent(dateIso, result.rule);
     sent.push(result);
     sentCount++;

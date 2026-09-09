@@ -1,4 +1,5 @@
 import type { Weekday } from './weeklySchedule.js';
+import type { InlineKeyboardButton } from './telegram.js';
 
 export interface NotificationContext {
   dateIso: string;
@@ -24,6 +25,7 @@ export interface NotificationContext {
 export interface NotificationRuleResult {
   rule: string;
   message: string;
+  buttons?: InlineKeyboardButton[];
 }
 
 const MORNING_START_HOUR = 7;
@@ -67,7 +69,12 @@ export function ruleDayPlanPrompt(ctx: NotificationContext): NotificationRuleRes
   const hint = ctx.todayWeekdayActivityHint ? ` (probablement : ${ctx.todayWeekdayActivityHint})` : '';
   return {
     rule: 'day_plan_prompt',
-    message: `Qu'est-ce que tu as prévu aujourd'hui ?${hint}`,
+    message: `Qu'est-ce que tu as prévu aujourd'hui ?${hint}\n\nNuit ?`,
+    buttons: [
+      { text: 'Bonne', callback_data: 'sleep:good' },
+      { text: 'Moyenne', callback_data: 'sleep:medium' },
+      { text: 'Mauvaise', callback_data: 'sleep:bad' },
+    ],
   };
 }
 
