@@ -44,3 +44,24 @@ export async function getMostRecentDailyState(): Promise<RecentDailyState | null
       }
     : null;
 }
+
+export interface WeeklyDailyStateEntry {
+  date: string;
+  totalKcal: number;
+  proteinG: number;
+  carbsG: number;
+  fatG: number;
+}
+
+export async function getRecentDailyStates(limit: number): Promise<WeeklyDailyStateEntry[]> {
+  const rows = await prisma.dailyState.findMany({ orderBy: { date: 'desc' }, take: limit });
+  return rows
+    .map((row) => ({
+      date: row.date,
+      totalKcal: row.totalKcal,
+      proteinG: row.proteinG,
+      carbsG: row.carbsG,
+      fatG: row.fatG,
+    }))
+    .reverse();
+}
