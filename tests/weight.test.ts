@@ -1,6 +1,6 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
-import { saveWeight, handleLogWeightTool } from '../lib/weight.js';
+import { saveWeight, handleLogWeightTool, getAllWeights } from '../lib/weight.js';
 
 describe('weight logging', () => {
   const testDate = '1999-06-15';
@@ -30,5 +30,33 @@ describe('weight logging', () => {
     expect(result).toContain('78.2');
     const saved = await prisma.weight.findUnique({ where: { date: testDate } });
     expect(saved?.weightKg).toBe(78.2);
+  });
+});
+
+describe('getAllWeights', () => {
+  const dateA = '1999-06-16';
+  const dateB = '1999-06-17';
+
+  afterAll(async () => {
+    await prisma.weight.deleteMany({ where: { date: { in: [dateA, dateB] } } });
+  });
+
+  it('returns an empty array when there is no data', async () => {
+    const result = await getAllWeights();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  it('returns entries ordered by date ascending', async () => {
+    await saveWeight({ date: dateB, weightKg: 77 });
+    await saveWeight({ date: dateA, weightKg: 78 });
+
+    const result = await getAllWeights();
+    const indexA = result.findIndex((w) => w.date === dateA);
+    const indexB = result.findIndex((w) => w.date === dateB);
+
+    expect(indexA).toBeGreaterThanOrEqual(0);
+    expect(indexB).toBeGreaterThan(indexA);
+    expect(result.find((w) => w.date === dateA)?.weightKg).toBe(78);
+    expect(result.find((w) => w.date === dateB)?.weightKg).toBe(77);
   });
 });

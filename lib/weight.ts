@@ -28,6 +28,11 @@ export async function saveWeight(entry: WeightEntry): Promise<void> {
   });
 }
 
+export async function getAllWeights(): Promise<WeightEntry[]> {
+  const rows = await prisma.weight.findMany({ orderBy: { date: 'asc' } });
+  return rows.map((row) => ({ date: row.date, weightKg: row.weightKg }));
+}
+
 export async function handleLogWeightTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as WeightEntry;
   await saveWeight(input);
