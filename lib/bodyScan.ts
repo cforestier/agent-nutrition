@@ -18,6 +18,13 @@ export interface SetBodyScanInput {
   reportedBmr?: number;
 }
 
+export const BODY_SCAN_PDF_PROMPT = `
+
+Quand un PDF de composition corporelle est joint au message, extrais-en la date de la mesure, le poids, la masse maigre, et si présents : masse grasse, % de graisse, masse osseuse, % d'eau, graisse viscérale, métabolisme de base rapporté.
+Rappelle que l'impédancemétrie varie selon l'hydratation et l'heure — à traiter en tendance, jamais en absolu.
+Résume les valeurs extraites clairement et demande une confirmation explicite avant d'enregistrer.
+N'appelle set_body_scan qu'après une confirmation explicite de l'utilisateur dans un message ultérieur (« oui », « confirme », « c'est bon ») — jamais dans le même tour que l'extraction initiale.`;
+
 export const SET_BODY_SCAN_TOOL: ToolDefinition = {
   name: 'set_body_scan',
   description:

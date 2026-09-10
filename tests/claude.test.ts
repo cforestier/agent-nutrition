@@ -118,6 +118,31 @@ describe('converseWithTool', () => {
     expect(handleTool).toHaveBeenCalledWith('second_tool', { x: 1 });
   });
 
+  it('attaches a base64 PDF as a document content block on the user message when documentBase64 is given', async () => {
+    createMock.mockResolvedValueOnce({
+      stop_reason: 'end_turn',
+      content: [{ type: 'text', text: 'Voici ce que je lis dans ton scan.' }],
+      usage: { output_tokens: 5 },
+    });
+
+    const handleTool = vi.fn();
+    await converseWithTool('system', [], 'voici mon scan', [tool], handleTool, 'BASE64DATA');
+
+    expect(createMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'BASE64DATA' } },
+              { type: 'text', text: 'voici mon scan' },
+            ],
+          },
+        ],
+      })
+    );
+  });
+
   it('stops after the iteration cap if the model keeps calling tools', async () => {
     createMock.mockResolvedValue({
       stop_reason: 'tool_use',

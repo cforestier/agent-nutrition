@@ -9,7 +9,7 @@ import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import { SET_WEEKLY_SCHEDULE_TOOL } from '../lib/weeklySchedule.js';
 import { LOG_WEIGHT_TOOL } from '../lib/weight.js';
 import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL } from '../lib/meals.js';
-import { SET_BODY_SCAN_TOOL } from '../lib/bodyScan.js';
+import { SET_BODY_SCAN_TOOL, BODY_SCAN_PDF_PROMPT } from '../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL } from '../lib/rebaseline.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 import * as sleepLib from '../lib/sleep.js';
@@ -134,6 +134,65 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(sendSpy).not.toHaveBeenCalled();
     expect(converseWithToolSpy).not.toHaveBeenCalled();
+  });
+
+  it('downloads a PDF document, sends it to Claude with the body-scan prompt, and replies with the extraction', async () => {
+    vi.spyOn(scenariosLib, 'buildScenarioSystemPrompt').mockResolvedValue('full system prompt');
+    vi.spyOn(weeklyScheduleStoreLib, 'weeklyScheduleSystemPromptAddition').mockResolvedValue('');
+    vi.spyOn(messagesLib, 'recentMessages').mockResolvedValue([]);
+    const downloadSpy = vi.spyOn(telegram, 'downloadTelegramFile').mockResolvedValue(Buffer.from('pdf-bytes'));
+    const converseWithToolSpy = vi
+      .spyOn(claudeLib, 'converseWithTool')
+      .mockResolvedValue({ text: 'Masse maigre 58.63 kg, poids 76 kg. Tu confirmes ?', outputTokens: 10 });
+    const saveSpy = vi.spyOn(messagesLib, 'saveMessage').mockResolvedValue();
+    const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const res = mockRes();
+    const body = {
+      message: { chat: { id: 12345 }, document: { file_id: 'file123', mime_type: 'application/pdf' } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(res.statusCode).toBe(200);
+    expect(downloadSpy).toHaveBeenCalledWith('file123');
+    expect(converseWithToolSpy).toHaveBeenCalledWith(
+      'full system prompt' + SAFETY_GUARDRAILS_PROMPT + BODY_SCAN_PDF_PROMPT,
+      [],
+      expect.any(String),
+      [
+        ...scenariosLib.SCENARIO_TOOLS,
+        SET_WEEKLY_SCHEDULE_TOOL,
+        LOG_WEIGHT_TOOL,
+        LOG_MEAL_TOOL,
+        LOG_WEIGHED_MEAL_TOOL,
+        SET_BODY_SCAN_TOOL,
+        TRIGGER_REBASELINE_TOOL,
+        FLAG_CONCERN_TOOL,
+      ],
+      expect.any(Function),
+      Buffer.from('pdf-bytes').toString('base64')
+    );
+    expect(saveSpy).toHaveBeenCalledWith('assistant', 'Masse maigre 58.63 kg, poids 76 kg. Tu confirmes ?', 10);
+    expect(sendSpy).toHaveBeenCalledWith(12345, 'Masse maigre 58.63 kg, poids 76 kg. Tu confirmes ?');
+  });
+
+  it('replies with a short message and does not call the model for a non-PDF document', async () => {
+    const downloadSpy = vi.spyOn(telegram, 'downloadTelegramFile').mockResolvedValue(Buffer.from(''));
+    const converseWithToolSpy = vi.spyOn(claudeLib, 'converseWithTool');
+    const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const res = mockRes();
+    const body = {
+      message: { chat: { id: 12345 }, document: { file_id: 'file123', mime_type: 'image/jpeg' } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(res.statusCode).toBe(200);
+    expect(downloadSpy).not.toHaveBeenCalled();
+    expect(converseWithToolSpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('PDF'));
   });
 
   it('answers the callback query and saves the sleep quality when a sleep button is tapped', async () => {

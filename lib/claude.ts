@@ -51,11 +51,19 @@ export async function converseWithTool(
   history: ChatMessage[],
   userText: string,
   tools: ToolDefinition[],
-  handleTool: ToolHandler
+  handleTool: ToolHandler,
+  documentBase64?: string
 ): Promise<ConverseResult> {
+  const userContent: Anthropic.MessageParam['content'] = documentBase64
+    ? [
+        { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: documentBase64 } },
+        { type: 'text', text: userText },
+      ]
+    : userText;
+
   const messages: Anthropic.MessageParam[] = [
     ...history.map((m) => ({ role: m.role, content: m.content })),
-    { role: 'user', content: userText },
+    { role: 'user', content: userContent },
   ];
 
   let totalOutputTokens = 0;

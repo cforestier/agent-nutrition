@@ -1,6 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { waitUntil } from '@vercel/functions';
-import { parseUpdate, sendMessage, parseCallbackQuery, answerCallbackQuery } from '../../lib/telegram.js';
+import {
+  parseUpdate,
+  sendMessage,
+  parseCallbackQuery,
+  answerCallbackQuery,
+  downloadTelegramFile,
+} from '../../lib/telegram.js';
 import { saveSleepQuality } from '../../lib/sleep.js';
 import type { SleepQuality } from '../../lib/calc/baseline.js';
 import { converseWithTool } from '../../lib/claude.js';
@@ -13,7 +19,7 @@ import { SET_WEEKLY_SCHEDULE_TOOL, handleWeeklyScheduleTool } from '../../lib/we
 import { weeklyScheduleSystemPromptAddition } from '../../lib/weeklyScheduleStore.js';
 import { LOG_WEIGHT_TOOL, handleLogWeightTool } from '../../lib/weight.js';
 import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL, handleLogMealTool, handleLogWeighedMealTool } from '../../lib/meals.js';
-import { SET_BODY_SCAN_TOOL, handleSetBodyScanTool } from '../../lib/bodyScan.js';
+import { SET_BODY_SCAN_TOOL, handleSetBodyScanTool, BODY_SCAN_PDF_PROMPT } from '../../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL, handleTriggerRebaselineTool } from '../../lib/rebaseline.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT, handleFlagConcernTool } from '../../lib/safety.js';
 
@@ -38,7 +44,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!parsed) return;
 
-  waitUntil(handleMessage(parsed.chatId, parsed.text));
+  if (parsed.kind === 'text') {
+    waitUntil(handleMessage(parsed.chatId, parsed.text));
+    return;
+  }
+
+  if (parsed.mimeType !== 'application/pdf') {
+    waitUntil(sendMessage(parsed.chatId, "Je ne sais lire qu'un PDF pour l'instant."));
+    return;
+  }
+
+  waitUntil(handlePdfMessage(parsed.chatId, parsed.fileId));
 }
 
 const GENERAL_CHAT_TOOLS = [
@@ -91,6 +107,28 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
       );
 
   await saveMessage('user', text);
+  await saveMessage('assistant', result.text, result.outputTokens);
+  await sendMessage(chatId, result.text);
+}
+
+async function handlePdfMessage(chatId: number, fileId: string): Promise<void> {
+  const history = await recentMessages(10);
+  const fileBuffer = await downloadTelegramFile(fileId);
+  const documentBase64 = fileBuffer.toString('base64');
+
+  const result = await converseWithTool(
+    (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
+      (await weeklyScheduleSystemPromptAddition()) +
+      SAFETY_GUARDRAILS_PROMPT +
+      BODY_SCAN_PDF_PROMPT,
+    history,
+    'Voici mon scan de composition corporelle (PDF).',
+    GENERAL_CHAT_TOOLS,
+    handleGeneralChatTool,
+    documentBase64
+  );
+
+  await saveMessage('user', '[PDF composition corporelle envoyé]');
   await saveMessage('assistant', result.text, result.outputTokens);
   await sendMessage(chatId, result.text);
 }
