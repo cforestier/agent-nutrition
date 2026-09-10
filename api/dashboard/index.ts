@@ -13,6 +13,8 @@ const DASHBOARD_HTML = `<!doctype html>
   #login-form { display: flex; gap: 0.5rem; }
   #login-error { color: #b00020; min-height: 1.2em; }
   #chart-container { margin-top: 1.5rem; }
+  .macro-chart { margin-top: 1.5rem; }
+  .macro-chart h2 { font-size: 1rem; margin-bottom: 0.25rem; }
   a.telegram-link { display: inline-block; margin-top: 1rem; padding: 0.6rem 1rem; background: #229ed9; color: white; text-decoration: none; border-radius: 6px; }
 </style>
 </head>
@@ -27,42 +29,82 @@ const DASHBOARD_HTML = `<!doctype html>
   </div>
   <div id="dashboard-view" style="display:none">
     <div id="chart-container"></div>
+
+    <div class="macro-chart">
+      <h2>Protéines (g)</h2>
+      <div id="protein-chart"></div>
+    </div>
+    <div class="macro-chart">
+      <h2>Glucides (g)</h2>
+      <div id="carbs-chart"></div>
+    </div>
+    <div class="macro-chart">
+      <h2>Lipides (g)</h2>
+      <div id="fat-chart"></div>
+    </div>
+
     <a class="telegram-link" href="https://t.me/${BOT_USERNAME}">Ouvrir le chat Telegram</a>
   </div>
 
   <script>
-    async function loadWeights() {
-      const res = await fetch('/api/dashboard/weights');
-      if (res.status === 401) {
-        document.getElementById('login-view').style.display = '';
-        document.getElementById('dashboard-view').style.display = 'none';
-        return;
-      }
-      const weights = await res.json();
-      document.getElementById('login-view').style.display = 'none';
-      document.getElementById('dashboard-view').style.display = '';
-      renderChart(weights);
-    }
-
-    function renderChart(weights) {
-      const container = document.getElementById('chart-container');
-      if (!weights.length) {
+    function renderLineChart(containerId, points) {
+      const container = document.getElementById(containerId);
+      if (!points.length) {
         container.textContent = 'Aucune donnée pour l\\'instant.';
         return;
       }
-      const width = 600, height = 300, padding = 30;
-      const values = weights.map(function (w) { return w.weightKg; });
+      const width = 600, height = 200, padding = 30;
+      const values = points.map(function (p) { return p.value; });
       const minV = Math.min.apply(null, values);
       const maxV = Math.max.apply(null, values);
       const range = maxV - minV || 1;
-      const points = weights.map(function (w, i) {
-        const x = padding + (i / (weights.length - 1 || 1)) * (width - 2 * padding);
-        const y = height - padding - ((w.weightKg - minV) / range) * (height - 2 * padding);
+      const coords = points.map(function (p, i) {
+        const x = padding + (i / (points.length - 1 || 1)) * (width - 2 * padding);
+        const y = height - padding - ((p.value - minV) / range) * (height - 2 * padding);
         return x + ',' + y;
       }).join(' ');
       container.innerHTML = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
-        '<polyline fill="none" stroke="#229ed9" stroke-width="2" points="' + points + '" /></svg>' +
-        '<div>' + weights[0].date + ' \\u2192 ' + weights[weights.length - 1].date + '</div>';
+        '<polyline fill="none" stroke="#229ed9" stroke-width="2" points="' + coords + '" /></svg>' +
+        '<div>' + points[0].date + ' \\u2192 ' + points[points.length - 1].date + '</div>';
+    }
+
+    function showDashboard() {
+      document.getElementById('login-view').style.display = 'none';
+      document.getElementById('dashboard-view').style.display = '';
+    }
+
+    function showLogin() {
+      document.getElementById('login-view').style.display = '';
+      document.getElementById('dashboard-view').style.display = 'none';
+    }
+
+    async function loadWeights() {
+      const res = await fetch('/api/dashboard/weights');
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+      const weights = await res.json();
+      showDashboard();
+      renderLineChart('chart-container', weights.map(function (w) { return { date: w.date, value: w.weightKg }; }));
+    }
+
+    async function loadMacros() {
+      const res = await fetch('/api/dashboard/macros');
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+      const macros = await res.json();
+      showDashboard();
+      renderLineChart('protein-chart', macros.map(function (m) { return { date: m.date, value: m.proteinG }; }));
+      renderLineChart('carbs-chart', macros.map(function (m) { return { date: m.date, value: m.carbsG }; }));
+      renderLineChart('fat-chart', macros.map(function (m) { return { date: m.date, value: m.fatG }; }));
+    }
+
+    function loadDashboard() {
+      loadWeights();
+      loadMacros();
     }
 
     document.getElementById('login-form').addEventListener('submit', function (e) {
@@ -75,14 +117,14 @@ const DASHBOARD_HTML = `<!doctype html>
       }).then(function (res) {
         if (res.ok) {
           document.getElementById('login-error').textContent = '';
-          loadWeights();
+          loadDashboard();
         } else {
           document.getElementById('login-error').textContent = 'Mot de passe incorrect.';
         }
       });
     });
 
-    loadWeights();
+    loadDashboard();
   </script>
 </body>
 </html>`;

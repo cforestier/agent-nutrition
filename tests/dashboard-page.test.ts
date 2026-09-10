@@ -41,4 +41,13 @@ describe('GET /api/dashboard', () => {
     expect(res.body).toContain('id="login-form"');
     expect(res.body).toContain('/api/dashboard/weights');
   });
+
+  it('includes the macros endpoint call and a chart container per macro', () => {
+    const res = mockRes();
+    handler({ method: 'GET' } as any, res as any);
+    expect(res.body).toContain('/api/dashboard/macros');
+    expect(res.body).toContain('id="protein-chart"');
+    expect(res.body).toContain('id="carbs-chart"');
+    expect(res.body).toContain('id="fat-chart"');
+  });
 });
