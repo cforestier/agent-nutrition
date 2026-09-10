@@ -15,6 +15,21 @@ const DASHBOARD_HTML = `<!doctype html>
   #chart-container { margin-top: 1.5rem; }
   .macro-chart { margin-top: 1.5rem; }
   .macro-chart h2 { font-size: 1rem; margin-bottom: 0.25rem; }
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; cursor: crosshair; }
+  .hover-dot { pointer-events: none; }
+  .chart-tooltip {
+    position: absolute;
+    display: none;
+    background: #222;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    pointer-events: none;
+    transform: translate(-50%, -130%);
+  }
   a.telegram-link { display: inline-block; margin-top: 1rem; padding: 0.6rem 1rem; background: #229ed9; color: white; text-decoration: none; border-radius: 6px; }
 </style>
 </head>
@@ -61,11 +76,52 @@ const DASHBOARD_HTML = `<!doctype html>
       const coords = points.map(function (p, i) {
         const x = padding + (i / (points.length - 1 || 1)) * (width - 2 * padding);
         const y = height - padding - ((p.value - minV) / range) * (height - 2 * padding);
-        return x + ',' + y;
-      }).join(' ');
-      container.innerHTML = '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
-        '<polyline fill="none" stroke="#229ed9" stroke-width="2" points="' + coords + '" /></svg>' +
+        return { x: x, y: y, date: p.date, value: p.value };
+      });
+      const pointsAttr = coords.map(function (c) { return c.x + ',' + c.y; }).join(' ');
+
+      container.innerHTML =
+        '<div class="chart-wrap">' +
+          '<svg width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">' +
+            '<polyline fill="none" stroke="#229ed9" stroke-width="2" points="' + pointsAttr + '" />' +
+            '<circle class="hover-dot" r="4" fill="#0a5a80" style="display:none" />' +
+          '</svg>' +
+          '<div class="chart-tooltip"></div>' +
+        '</div>' +
         '<div>' + points[0].date + ' \\u2192 ' + points[points.length - 1].date + '</div>';
+
+      const svg = container.querySelector('svg');
+      const dot = container.querySelector('.hover-dot');
+      const tooltip = container.querySelector('.chart-tooltip');
+
+      svg.addEventListener('mousemove', function (e) {
+        const rect = svg.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * (width / rect.width);
+
+        let nearest = coords[0];
+        let nearestDist = Math.abs(coords[0].x - mouseX);
+        for (let i = 1; i < coords.length; i++) {
+          const dist = Math.abs(coords[i].x - mouseX);
+          if (dist < nearestDist) {
+            nearest = coords[i];
+            nearestDist = dist;
+          }
+        }
+
+        dot.setAttribute('cx', nearest.x);
+        dot.setAttribute('cy', nearest.y);
+        dot.style.display = '';
+
+        tooltip.textContent = nearest.date + ' : ' + nearest.value;
+        tooltip.style.left = (nearest.x / width) * rect.width + 'px';
+        tooltip.style.top = (nearest.y / height) * rect.height + 'px';
+        tooltip.style.display = '';
+      });
+
+      svg.addEventListener('mouseleave', function () {
+        dot.style.display = 'none';
+        tooltip.style.display = 'none';
+      });
     }
 
     function showDashboard() {

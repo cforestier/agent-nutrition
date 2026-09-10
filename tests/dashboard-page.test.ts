@@ -50,4 +50,13 @@ describe('GET /api/dashboard', () => {
     expect(res.body).toContain('id="carbs-chart"');
     expect(res.body).toContain('id="fat-chart"');
   });
+
+  it('wires up a hover point and tooltip on the chart rendering function', () => {
+    const res = mockRes();
+    handler({ method: 'GET' } as any, res as any);
+    expect(res.body).toContain('hover-dot');
+    expect(res.body).toContain('chart-tooltip');
+    expect(res.body).toContain("addEventListener('mousemove'");
+    expect(res.body).toContain("addEventListener('mouseleave'");
+  });
 });
