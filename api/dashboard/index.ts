@@ -115,7 +115,7 @@ const DASHBOARD_HTML = `<!doctype html>
         tooltip.textContent = nearest.date + ' : ' + nearest.value;
         tooltip.style.left = (nearest.x / width) * rect.width + 'px';
         tooltip.style.top = (nearest.y / height) * rect.height + 'px';
-        tooltip.style.display = '';
+        tooltip.style.display = 'block';
       });
 
       svg.addEventListener('mouseleave', function () {
