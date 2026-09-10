@@ -60,8 +60,23 @@ model DayPlan {
   segmentsResolved Json
   confirmed        Boolean  @default(false)
   isAtypical       Boolean  @default(false)
+  eventBonusKcal   Float?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model ActivityLog {
+  id               String   @id @default(auto()) @map("_id") @db.ObjectId
+  date             String
+  description      String
+  sportType        String
+  reportedCalories Float
+  relationToPlan   String
+  baselineKcal     Float
+  rawDiffKcal      Float
+  discountPct      Float
+  bonusKcal        Float
+  createdAt        DateTime @default(now())
 }
 
 model WeeklyDefault {
