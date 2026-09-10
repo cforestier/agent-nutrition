@@ -1,8 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import * as claudeLib from '../lib/claude.js';
 import {
   ruleDayPlanPrompt,
   ruleWeeklyWeighIn,
   ruleWeeklyReview,
+  ruleWeeklyMacroInsight,
   ruleDietBreak,
   ruleNoMealIn24h,
 } from '../lib/notificationRules.js';
@@ -20,6 +22,8 @@ const baseCtx: NotificationContext = {
   todayWeekdayActivityHint: null,
   latestDailyState: null,
   currentTargetKcal: null,
+  weeklyMacros: null,
+  recentSleepQualities: [],
 };
 
 describe('ruleDayPlanPrompt', () => {
@@ -97,6 +101,85 @@ describe('ruleWeeklyReview', () => {
     expect(
       ruleWeeklyReview({ ...baseCtx, hourLocal: 9, reviewDay: 'wednesday', latestDailyState: dailyState })
     ).toBeNull();
+  });
+});
+
+describe('ruleWeeklyMacroInsight', () => {
+  const weeklyMacros = {
+    proteinTargetMinG: 140,
+    proteinTargetMaxG: 154,
+    entries: [
+      { date: '2026-09-03', totalKcal: 2600, proteinG: 120, carbsG: 260, fatG: 70 },
+      { date: '2026-09-04', totalKcal: 2550, proteinG: 115, carbsG: 250, fatG: 65 },
+      { date: '2026-09-05', totalKcal: 2500, proteinG: 110, carbsG: 240, fatG: 60 },
+    ],
+  };
+
+  it("fires in the evening on the review day with enough data, and returns Claude's observation", async () => {
+    const converseSpy = vi.spyOn(claudeLib, 'converse').mockResolvedValue({
+      text: 'Tes apports en protéines sont un peu bas cette semaine, ce qui peut expliquer la fatigue.',
+      outputTokens: 20,
+    });
+
+    const result = await ruleWeeklyMacroInsight({
+      ...baseCtx,
+      hourLocal: 19,
+      reviewDay: 'wednesday',
+      weeklyMacros,
+      recentSleepQualities: ['bad', 'bad', 'medium'],
+    });
+
+    expect(result?.rule).toBe('weekly_macro_insight');
+    expect(result?.message).toContain('fatigue');
+    expect(converseSpy).toHaveBeenCalledOnce();
+    const [, messages] = converseSpy.mock.calls[0];
+    expect(messages[0].content).toContain('protéines moy. 115');
+    expect(messages[0].content).toContain('140-154');
+    expect(messages[0].content).toContain('2 mauvaises');
+  });
+
+  it('does not fire outside the evening window', async () => {
+    const result = await ruleWeeklyMacroInsight({
+      ...baseCtx,
+      hourLocal: 9,
+      reviewDay: 'wednesday',
+      weeklyMacros,
+      recentSleepQualities: [],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('does not fire on a different weekday', async () => {
+    const result = await ruleWeeklyMacroInsight({
+      ...baseCtx,
+      hourLocal: 19,
+      reviewDay: 'monday',
+      weeklyMacros,
+      recentSleepQualities: [],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('does not fire with fewer than 3 days of data', async () => {
+    const result = await ruleWeeklyMacroInsight({
+      ...baseCtx,
+      hourLocal: 19,
+      reviewDay: 'wednesday',
+      weeklyMacros: { ...weeklyMacros, entries: weeklyMacros.entries.slice(0, 2) },
+      recentSleepQualities: [],
+    });
+    expect(result).toBeNull();
+  });
+
+  it('does not fire when there is no weekly macro data at all', async () => {
+    const result = await ruleWeeklyMacroInsight({
+      ...baseCtx,
+      hourLocal: 19,
+      reviewDay: 'wednesday',
+      weeklyMacros: null,
+      recentSleepQualities: [],
+    });
+    expect(result).toBeNull();
   });
 });
 

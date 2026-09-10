@@ -5,6 +5,8 @@ import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import * as notificationStoreLib from '../lib/notificationStore.js';
 import * as telegramLib from '../lib/telegram.js';
+import * as sleepLib from '../lib/sleep.js';
+import * as claudeLib from '../lib/claude.js';
 
 const TEST_DATE = '1999-09-05';
 
@@ -46,6 +48,8 @@ describe('runNotificationTick', () => {
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
     vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T07:00:00Z') });
     vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     const sendSpy = vi.spyOn(telegramLib, 'sendMessageWithKeyboard').mockResolvedValue();
 
     const result = await runNotificationTick(new Date('1999-09-05T06:30:00Z'), 12345);
@@ -68,6 +72,8 @@ describe('runNotificationTick', () => {
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
     vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T07:00:00Z') });
     vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
 
     // day_plan_prompt already recorded by the previous test for this same TEST_DATE.
@@ -82,6 +88,8 @@ describe('runNotificationTick', () => {
     vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
     vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T07:00:00Z') });
     vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
     vi.spyOn(notificationStoreLib, 'countNotificationsToday').mockResolvedValue(4);
     const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
 
@@ -89,5 +97,35 @@ describe('runNotificationTick', () => {
 
     expect(result.sent).toEqual([]);
     expect(sendSpy).not.toHaveBeenCalled();
+  });
+
+  it('sends the weekly macro insight on the review day evening when enough data is available', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue({ ...baseProfile(), reviewDay: 'sunday' });
+    vi.spyOn(notificationStoreLib, 'countNotificationsToday').mockResolvedValue(0);
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T18:00:00Z') });
+    vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([
+      { date: '1999-09-03', totalKcal: 2600, proteinG: 120, carbsG: 260, fatG: 70 },
+      { date: '1999-09-04', totalKcal: 2550, proteinG: 115, carbsG: 250, fatG: 65 },
+      { date: '1999-09-05', totalKcal: 2500, proteinG: 110, carbsG: 240, fatG: 60 },
+    ]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue(['bad', 'bad', 'medium']);
+    vi.spyOn(claudeLib, 'converse').mockResolvedValue({
+      text: 'Tes protéines sont un peu basses cette semaine, ce qui peut jouer sur ta fatigue.',
+      outputTokens: 15,
+    });
+    const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+
+    // 1999-09-05 18:00 UTC is a Sunday evening in Zurich time.
+    const result = await runNotificationTick(new Date('1999-09-05T18:00:00Z'), 12345);
+
+    expect(result.sent.map((s) => s.rule)).toContain('weekly_macro_insight');
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('fatigue'));
+
+    const recorded = await prisma.notification.findUnique({
+      where: { date_rule: { date: TEST_DATE, rule: 'weekly_macro_insight' } },
+    });
+    expect(recorded).not.toBeNull();
   });
 });

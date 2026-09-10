@@ -3,20 +3,24 @@ import { sendMessage, sendMessageWithKeyboard } from './telegram.js';
 import { weekdayOf } from './dateUtils.js';
 import { getProfileSnapshot } from './profile.js';
 import { getWeeklyDefault } from './weeklyScheduleStore.js';
+import { recentSleepQualities } from './sleep.js';
+import { proteinTargetRangeG } from './calc/baseline.js';
 import {
   countNotificationsToday,
   hasRuleFiredToday,
   recordNotificationSent,
   getMostRecentMeal,
   getMostRecentDailyState,
+  getRecentDailyStates,
 } from './notificationStore.js';
 import { NOTIFICATION_RULES } from './notificationRules.js';
-import type { NotificationContext } from './notificationRules.js';
+import type { NotificationContext, WeeklyMacros } from './notificationRules.js';
 
 const MAX_NOTIFICATIONS_PER_DAY = 4;
 const QUIET_HOUR_START = 22;
 const QUIET_HOUR_END = 7;
 const ZURICH_TZ = 'Europe/Zurich';
+const WEEKLY_WINDOW_DAYS = 7;
 
 function zurichParts(now: Date): { dateIso: string; hourLocal: number } {
   const dateIso = now.toLocaleDateString('en-CA', { timeZone: ZURICH_TZ });
@@ -43,16 +47,24 @@ export async function runNotificationTick(now: Date, chatId: number): Promise<Ti
 
   const weekday = weekdayOf(dateIso);
 
-  const [profile, weeklyDefault, todayWeight, todayDayPlan, latestMeal, latestDailyState] = await Promise.all([
-    getProfileSnapshot(),
-    getWeeklyDefault(weekday),
-    prisma.weight.findUnique({ where: { date: dateIso } }),
-    prisma.dayPlan.findUnique({ where: { date: dateIso } }),
-    getMostRecentMeal(),
-    getMostRecentDailyState(),
-  ]);
+  const [profile, weeklyDefault, todayWeight, todayDayPlan, latestMeal, latestDailyState, recentDailyStates, sleepQualities] =
+    await Promise.all([
+      getProfileSnapshot(),
+      getWeeklyDefault(weekday),
+      prisma.weight.findUnique({ where: { date: dateIso } }),
+      prisma.dayPlan.findUnique({ where: { date: dateIso } }),
+      getMostRecentMeal(),
+      getMostRecentDailyState(),
+      getRecentDailyStates(WEEKLY_WINDOW_DAYS),
+      recentSleepQualities(WEEKLY_WINDOW_DAYS),
+    ]);
 
   const latestMealAgeHours = latestMeal ? (now.getTime() - latestMeal.datetime.getTime()) / (1000 * 60 * 60) : null;
+
+  const proteinTarget = profile.weightKg !== null ? proteinTargetRangeG(profile.weightKg) : null;
+  const weeklyMacros: WeeklyMacros | null = proteinTarget
+    ? { entries: recentDailyStates, proteinTargetMinG: proteinTarget.minG, proteinTargetMaxG: proteinTarget.maxG }
+    : null;
 
   const context: NotificationContext = {
     dateIso,
@@ -66,13 +78,15 @@ export async function runNotificationTick(now: Date, chatId: number): Promise<Ti
     todayWeekdayActivityHint: weeklyDefault ? weeklyDefault.activityType : null,
     latestDailyState,
     currentTargetKcal: profile.currentTargetKcal,
+    weeklyMacros,
+    recentSleepQualities: sleepQualities,
   };
 
   const sent: { rule: string; message: string }[] = [];
 
   for (const rule of NOTIFICATION_RULES) {
     if (sentCount >= MAX_NOTIFICATIONS_PER_DAY) break;
-    const result = rule(context);
+    const result = await rule(context);
     if (!result) continue;
     if (await hasRuleFiredToday(dateIso, result.rule)) continue;
 

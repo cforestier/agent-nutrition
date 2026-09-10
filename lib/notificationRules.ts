@@ -1,5 +1,13 @@
 import type { Weekday } from './weeklySchedule.js';
 import type { InlineKeyboardButton } from './telegram.js';
+import type { SleepQuality } from './calc/baseline.js';
+import { converse } from './claude.js';
+
+export interface WeeklyMacros {
+  entries: { date: string; totalKcal: number; proteinG: number; carbsG: number; fatG: number }[];
+  proteinTargetMinG: number;
+  proteinTargetMaxG: number;
+}
 
 export interface NotificationContext {
   dateIso: string;
@@ -20,6 +28,8 @@ export interface NotificationContext {
     dietBreakRecommended: boolean;
   } | null;
   currentTargetKcal: number | null;
+  weeklyMacros: WeeklyMacros | null;
+  recentSleepQualities: SleepQuality[];
 }
 
 export interface NotificationRuleResult {
@@ -27,6 +37,10 @@ export interface NotificationRuleResult {
   message: string;
   buttons?: InlineKeyboardButton[];
 }
+
+export type NotificationRule = (
+  ctx: NotificationContext
+) => NotificationRuleResult | null | Promise<NotificationRuleResult | null>;
 
 const MORNING_START_HOUR = 7;
 const MORNING_END_HOUR = 11;
@@ -96,6 +110,48 @@ export function ruleWeeklyReview(ctx: NotificationContext): NotificationRuleResu
   return { rule: 'weekly_review', message: parts.join(', ') };
 }
 
+const MIN_WEEKLY_ENTRIES = 3;
+
+const WEEKLY_MACRO_INSIGHT_PROMPT = `Tu es l'assistant nutrition de Raphaël, athlète d'endurance en volume élevé.
+On te donne un résumé factuel d'une semaine : macros moyennes (protéines/glucides/lipides), la cible protéines, le pourcentage de calories venant des glucides et des lipides, et la répartition de la qualité du sommeil.
+Rédige UNE seule observation courte (2 à 3 phrases maximum), factuelle et bienveillante, qui relie ces signaux entre eux si c'est pertinent (par exemple fatigue et apport en lipides ou en protéines bas).
+N'invente aucune cible chiffrée pour les glucides ou les lipides — utilise ton jugement nutritionnel général pour dire si quelque chose semble déséquilibré, sans ton moralisateur.
+Si tout semble équilibré, dis-le simplement.`;
+
+function average(values: number[]): number {
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+export async function ruleWeeklyMacroInsight(ctx: NotificationContext): Promise<NotificationRuleResult | null> {
+  if (!isEvening(ctx.hourLocal)) return null;
+  if (ctx.reviewDay !== ctx.weekday) return null;
+  if (!ctx.weeklyMacros || ctx.weeklyMacros.entries.length < MIN_WEEKLY_ENTRIES) return null;
+
+  const { entries, proteinTargetMinG, proteinTargetMaxG } = ctx.weeklyMacros;
+  const avgProtein = average(entries.map((e) => e.proteinG));
+  const avgCarbs = average(entries.map((e) => e.carbsG));
+  const avgFat = average(entries.map((e) => e.fatG));
+  const avgKcal = average(entries.map((e) => e.totalKcal));
+  const carbsPctKcal = avgKcal > 0 ? ((avgCarbs * 4) / avgKcal) * 100 : 0;
+  const fatPctKcal = avgKcal > 0 ? ((avgFat * 9) / avgKcal) * 100 : 0;
+
+  const sleepCounts = { good: 0, medium: 0, bad: 0 };
+  for (const quality of ctx.recentSleepQualities) sleepCounts[quality]++;
+
+  const summary = [
+    `Semaine (${entries.length} jours de données) :`,
+    `protéines moy. ${avgProtein.toFixed(0)} g/j (cible ${proteinTargetMinG.toFixed(0)}-${proteinTargetMaxG.toFixed(0)} g/j)`,
+    `glucides moy. ${avgCarbs.toFixed(0)} g/j (${carbsPctKcal.toFixed(0)}% des calories)`,
+    `lipides moy. ${avgFat.toFixed(0)} g/j (${fatPctKcal.toFixed(0)}% des calories)`,
+    `calories moy. ${avgKcal.toFixed(0)} kcal/j`,
+    `sommeil : ${sleepCounts.good} bonnes, ${sleepCounts.medium} moyennes, ${sleepCounts.bad} mauvaises nuits sur ${ctx.recentSleepQualities.length} nuits notées`,
+  ].join(', ');
+
+  const result = await converse(WEEKLY_MACRO_INSIGHT_PROMPT, [{ role: 'user', content: summary }]);
+
+  return { rule: 'weekly_macro_insight', message: result.text };
+}
+
 export function ruleDietBreak(ctx: NotificationContext): NotificationRuleResult | null {
   if (!ctx.latestDailyState?.dietBreakRecommended) return null;
   return {
@@ -105,10 +161,11 @@ export function ruleDietBreak(ctx: NotificationContext): NotificationRuleResult 
   };
 }
 
-export const NOTIFICATION_RULES = [
+export const NOTIFICATION_RULES: NotificationRule[] = [
   ruleDayPlanPrompt,
   ruleWeeklyWeighIn,
   ruleWeeklyReview,
+  ruleWeeklyMacroInsight,
   ruleDietBreak,
   ruleNoMealIn24h,
 ];
