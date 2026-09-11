@@ -59,4 +59,19 @@ describe('GET /api/dashboard', () => {
     expect(res.body).toContain("addEventListener('mousemove'");
     expect(res.body).toContain("addEventListener('mouseleave'");
   });
+
+  it("includes the today endpoint call and the calories/protein rings, macro breakdown, and delta chips", () => {
+    const res = mockRes();
+    handler({ method: 'GET' } as any, res as any);
+    expect(res.body).toContain('/api/dashboard/today');
+    expect(res.body).toContain('id="calories-ring-progress"');
+    expect(res.body).toContain('id="protein-ring-progress"');
+    expect(res.body).toContain('id="calories-ring-value"');
+    expect(res.body).toContain('id="protein-ring-value"');
+    expect(res.body).toContain('id="macro-card-protein-value"');
+    expect(res.body).toContain('id="macro-card-carbs-value"');
+    expect(res.body).toContain('id="macro-card-fat-value"');
+    expect(res.body).toContain('id="kcal-delta-value"');
+    expect(res.body).toContain('id="protein-delta-value"');
+  });
 });
