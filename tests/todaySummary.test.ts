@@ -56,6 +56,8 @@ describe('getTodaySummary', () => {
     expect(result.targetKcal).toBeCloseTo(2650, 5); // 2500 + 150 bonus
     expect(result.proteinTargetMinG).toBeCloseTo(152, 1); // 76 * 2.0
     expect(result.proteinTargetMaxG).toBeCloseTo(167.2, 1); // 76 * 2.2
+    expect(result.fatTargetG).toBeCloseTo(73.61, 1); // 2650 * 0.25 / 9
+    expect(result.carbsTargetG).toBeCloseTo(344.88, 1); // (2650 - 152*4 - 73.61*9) / 4
   });
 
   it('returns zeros and null targets when there is no data for the date or the profile', async () => {
@@ -79,5 +81,7 @@ describe('getTodaySummary', () => {
     expect(result.targetKcal).toBeNull();
     expect(result.proteinTargetMinG).toBeNull();
     expect(result.proteinTargetMaxG).toBeNull();
+    expect(result.fatTargetG).toBeNull();
+    expect(result.carbsTargetG).toBeNull();
   });
 });

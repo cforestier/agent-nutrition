@@ -49,6 +49,8 @@ describe('GET /api/dashboard/today', () => {
       targetKcal: 2500,
       proteinTargetMinG: 150,
       proteinTargetMaxG: 165,
+      fatTargetG: 69,
+      carbsTargetG: 320,
     };
     const getTodaySpy = vi.spyOn(todaySummaryLib, 'getTodaySummary').mockResolvedValue(summary);
     const cookieHeader = buildSessionCookieHeader('correct-horse');

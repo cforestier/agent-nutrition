@@ -4,6 +4,8 @@ import { getProfileSnapshot } from './profile.js';
 import { proteinTargetRangeG } from './calc/baseline.js';
 import type { MealItem } from './meals.js';
 
+const FAT_TARGET_PCT_OF_KCAL = 0.25;
+
 export interface TodaySummary {
   date: string;
   totalKcal: number;
@@ -13,6 +15,8 @@ export interface TodaySummary {
   targetKcal: number | null;
   proteinTargetMinG: number | null;
   proteinTargetMaxG: number | null;
+  fatTargetG: number | null;
+  carbsTargetG: number | null;
 }
 
 export async function getTodaySummary(date: string): Promise<TodaySummary> {
@@ -43,6 +47,12 @@ export async function getTodaySummary(date: string): Promise<TodaySummary> {
     profile.currentTargetKcal !== null ? profile.currentTargetKcal + (dayPlan?.eventBonusKcal ?? 0) : null;
   const proteinTarget = profile.weightKg !== null ? proteinTargetRangeG(profile.weightKg) : null;
 
+  const fatTargetG = targetKcal !== null ? (targetKcal * FAT_TARGET_PCT_OF_KCAL) / 9 : null;
+  const carbsTargetG =
+    targetKcal !== null && proteinTarget !== null && fatTargetG !== null
+      ? Math.max(0, (targetKcal - proteinTarget.minG * 4 - fatTargetG * 9) / 4)
+      : null;
+
   return {
     date,
     totalKcal,
@@ -52,5 +62,7 @@ export async function getTodaySummary(date: string): Promise<TodaySummary> {
     targetKcal,
     proteinTargetMinG: proteinTarget?.minG ?? null,
     proteinTargetMaxG: proteinTarget?.maxG ?? null,
+    fatTargetG,
+    carbsTargetG,
   };
 }

@@ -111,23 +111,25 @@ const DASHBOARD_HTML = `<!doctype html>
   section { margin-bottom: 2.25rem; }
 
   .rings-section {
-    display: flex;
-    gap: 1rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
   }
 
   .ring-card {
-    flex: 1;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 1.25rem 1rem 1.4rem;
+    padding: 1.1rem 0.6rem 1.2rem;
     text-align: center;
     opacity: 0;
     animation: rise 0.6s ease forwards;
   }
-  .ring-card:nth-child(2) { animation-delay: 0.08s; }
+  .ring-card:nth-child(2) { animation-delay: 0.06s; }
+  .ring-card:nth-child(3) { animation-delay: 0.12s; }
+  .ring-card:nth-child(4) { animation-delay: 0.18s; }
 
-  .ring-card svg { display: block; margin: 0 auto; }
+  .ring-card svg { display: block; margin: 0 auto; width: 96px; height: 96px; }
 
   .ring-track { stroke: rgba(245, 239, 230, 0.08); fill: none; }
   .ring-progress {
@@ -139,43 +141,18 @@ const DASHBOARD_HTML = `<!doctype html>
   }
   #calories-ring-progress { stroke: var(--amber); filter: drop-shadow(0 0 6px rgba(255, 138, 61, 0.55)); }
   #protein-ring-progress { stroke: var(--teal); filter: drop-shadow(0 0 6px rgba(95, 227, 196, 0.5)); }
+  #carbs-ring-progress { stroke: var(--carb); filter: drop-shadow(0 0 6px rgba(255, 207, 92, 0.5)); }
+  #fat-ring-progress { stroke: var(--fat); filter: drop-shadow(0 0 6px rgba(255, 125, 151, 0.5)); }
   .ring-progress.over { stroke: var(--danger) !important; filter: none !important; }
 
   .ring-center-value {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
     font-weight: 600;
   }
-  .ring-unit { font-size: 0.7rem; color: var(--text-muted); display: block; margin-top: -2px; }
-  .ring-label { margin: 0.7rem 0 0.15rem; font-weight: 600; font-size: 0.92rem; }
-  .ring-sub { margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.76rem; color: var(--text-muted); }
-
-  .macro-bar {
-    display: flex;
-    height: 10px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: rgba(245, 239, 230, 0.06);
-    margin-bottom: 1rem;
-  }
-  .macro-bar-segment { height: 100%; }
-  .macro-bar-segment.protein { background: var(--teal); }
-  .macro-bar-segment.carbs { background: var(--carb); }
-  .macro-bar-segment.fat { background: var(--fat); }
-
-  .macro-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
-  .macro-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-left: 3px solid transparent;
-    border-radius: 14px;
-    padding: 0.7rem 0.6rem;
-  }
-  .macro-card.protein { border-left-color: var(--teal); }
-  .macro-card.carbs { border-left-color: var(--carb); }
-  .macro-card.fat { border-left-color: var(--fat); }
-  .macro-card-label { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 0.15rem; }
-  .macro-card-value { font-family: 'IBM Plex Mono', monospace; font-size: 1.05rem; font-weight: 600; }
+  .ring-unit { font-size: 0.66rem; color: var(--text-muted); display: block; margin-top: -2px; }
+  .ring-label { margin: 0.6rem 0 0.1rem; font-weight: 600; font-size: 0.86rem; }
+  .ring-sub { margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: var(--text-muted); }
 
   .deltas-section { display: flex; gap: 0.6rem; }
   .delta-chip {
@@ -266,28 +243,25 @@ const DASHBOARD_HTML = `<!doctype html>
           <p class="ring-label">Protéines</p>
           <p class="ring-sub" id="protein-ring-sub">-- / -- g</p>
         </div>
-      </section>
-
-      <section class="macros-breakdown-section">
-        <h2>Répartition du jour</h2>
-        <div class="macro-bar">
-          <div class="macro-bar-segment protein" id="macro-bar-protein"></div>
-          <div class="macro-bar-segment carbs" id="macro-bar-carbs"></div>
-          <div class="macro-bar-segment fat" id="macro-bar-fat"></div>
+        <div class="ring-card">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle class="ring-track" cx="60" cy="60" r="54" stroke-width="10" />
+            <circle id="carbs-ring-progress" class="ring-progress" cx="60" cy="60" r="54" stroke-width="10" />
+          </svg>
+          <span class="ring-center-value" id="carbs-ring-value">--</span>
+          <span class="ring-unit">g glucides</span>
+          <p class="ring-label">Glucides</p>
+          <p class="ring-sub" id="carbs-ring-sub">-- / -- g</p>
         </div>
-        <div class="macro-cards">
-          <div class="macro-card protein">
-            <p class="macro-card-label">Protéines</p>
-            <p class="macro-card-value" id="macro-card-protein-value">-- g</p>
-          </div>
-          <div class="macro-card carbs">
-            <p class="macro-card-label">Glucides</p>
-            <p class="macro-card-value" id="macro-card-carbs-value">-- g</p>
-          </div>
-          <div class="macro-card fat">
-            <p class="macro-card-label">Lipides</p>
-            <p class="macro-card-value" id="macro-card-fat-value">-- g</p>
-          </div>
+        <div class="ring-card">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle class="ring-track" cx="60" cy="60" r="54" stroke-width="10" />
+            <circle id="fat-ring-progress" class="ring-progress" cx="60" cy="60" r="54" stroke-width="10" />
+          </svg>
+          <span class="ring-center-value" id="fat-ring-value">--</span>
+          <span class="ring-unit">g lipides</span>
+          <p class="ring-label">Lipides</p>
+          <p class="ring-sub" id="fat-ring-sub">-- / -- g</p>
         </div>
       </section>
 
@@ -407,24 +381,36 @@ const DASHBOARD_HTML = `<!doctype html>
       el.classList.toggle('over', fraction > 1);
     }
 
+    function renderSingleTargetRing(prefix, value, target, unit) {
+      const valueEl = document.getElementById(prefix + '-ring-value');
+      const subEl = document.getElementById(prefix + '-ring-sub');
+
+      if (target !== null) {
+        setRing(prefix + '-ring-progress', value / target);
+        valueEl.textContent = Math.round(value);
+        subEl.textContent = Math.round(value) + ' / ' + Math.round(target) + ' ' + unit;
+      } else {
+        valueEl.textContent = Math.round(value);
+        subEl.textContent = Math.round(value) + ' ' + unit;
+      }
+    }
+
     function renderToday(summary) {
       const dateLabel = new Date(summary.date + 'T00:00:00').toLocaleDateString('fr-FR', {
         weekday: 'long', day: 'numeric', month: 'long',
       });
       document.getElementById('today-eyebrow').textContent = dateLabel;
 
+      renderSingleTargetRing('calories', summary.totalKcal, summary.targetKcal, 'kcal');
+      renderSingleTargetRing('carbs', summary.carbsG, summary.carbsTargetG, 'g');
+      renderSingleTargetRing('fat', summary.fatG, summary.fatTargetG, 'g');
+
       if (summary.targetKcal !== null) {
-        setRing('calories-ring-progress', summary.totalKcal / summary.targetKcal);
-        document.getElementById('calories-ring-value').textContent = Math.round(summary.totalKcal);
-        document.getElementById('calories-ring-sub').textContent =
-          Math.round(summary.totalKcal) + ' / ' + Math.round(summary.targetKcal) + ' kcal';
         const kcalDelta = summary.totalKcal - summary.targetKcal;
         const kcalEl = document.getElementById('kcal-delta-value');
         kcalEl.textContent = (kcalDelta > 0 ? '+' : '') + Math.round(kcalDelta) + ' kcal';
         kcalEl.className = 'delta-chip-value ' + (kcalDelta > 0 ? 'warn' : 'good');
       } else {
-        document.getElementById('calories-ring-value').textContent = Math.round(summary.totalKcal);
-        document.getElementById('calories-ring-sub').textContent = Math.round(summary.totalKcal) + ' kcal';
         document.getElementById('kcal-delta-value').textContent = 'pas de cible';
       }
 
@@ -442,17 +428,6 @@ const DASHBOARD_HTML = `<!doctype html>
         document.getElementById('protein-ring-sub').textContent = Math.round(summary.proteinG) + ' g';
         document.getElementById('protein-delta-value').textContent = 'pas de cible';
       }
-
-      const macroKcal = summary.proteinG * 4 + summary.carbsG * 4 + summary.fatG * 9;
-      const pct = function (grams, kcalPerG) {
-        return macroKcal > 0 ? ((grams * kcalPerG) / macroKcal) * 100 : 0;
-      };
-      document.getElementById('macro-bar-protein').style.width = pct(summary.proteinG, 4).toFixed(1) + '%';
-      document.getElementById('macro-bar-carbs').style.width = pct(summary.carbsG, 4).toFixed(1) + '%';
-      document.getElementById('macro-bar-fat').style.width = pct(summary.fatG, 9).toFixed(1) + '%';
-      document.getElementById('macro-card-protein-value').textContent = Math.round(summary.proteinG) + ' g';
-      document.getElementById('macro-card-carbs-value').textContent = Math.round(summary.carbsG) + ' g';
-      document.getElementById('macro-card-fat-value').textContent = Math.round(summary.fatG) + ' g';
     }
 
     async function loadToday() {
