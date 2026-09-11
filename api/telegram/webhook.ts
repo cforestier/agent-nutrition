@@ -58,6 +58,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   waitUntil(handlePdfMessage(parsed.chatId, parsed.fileId));
 }
 
+const HISTORY_MESSAGE_LIMIT = 40;
+
 const GENERAL_CHAT_TOOLS = [
   ...SCENARIO_TOOLS,
   SET_WEEKLY_SCHEDULE_TOOL,
@@ -88,7 +90,7 @@ async function handleOnboardingChatTool(name: string, input: Record<string, unkn
 }
 
 async function handleMessage(chatId: number, text: string): Promise<void> {
-  const history = await recentMessages(10);
+  const history = await recentMessages(HISTORY_MESSAGE_LIMIT);
   const onboardingDone = await isOnboardingBasicsComplete();
 
   const result = onboardingDone
@@ -102,7 +104,7 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
         handleGeneralChatTool
       )
     : await converseWithTool(
-        ONBOARDING_SYSTEM_PROMPT + SAFETY_GUARDRAILS_PROMPT,
+        ONBOARDING_SYSTEM_PROMPT + `\n\nDate du jour : ${todayIsoDate()}.` + SAFETY_GUARDRAILS_PROMPT,
         history,
         text,
         [ONBOARDING_TOOL, FLAG_CONCERN_TOOL],
@@ -115,7 +117,7 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
 }
 
 async function handlePdfMessage(chatId: number, fileId: string): Promise<void> {
-  const history = await recentMessages(10);
+  const history = await recentMessages(HISTORY_MESSAGE_LIMIT);
   const fileBuffer = await downloadTelegramFile(fileId);
   const documentBase64 = fileBuffer.toString('base64');
 

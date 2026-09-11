@@ -114,13 +114,14 @@ describe('POST /api/telegram/webhook', () => {
     await handler({ method: 'POST', body } as any, res as any);
     await flushBackgroundTasks();
 
-    expect(converseWithToolSpy).toHaveBeenCalledWith(
-      onboardingLib.ONBOARDING_SYSTEM_PROMPT + SAFETY_GUARDRAILS_PROMPT,
-      [],
-      '80kg',
-      [onboardingLib.ONBOARDING_TOOL, FLAG_CONCERN_TOOL],
-      expect.any(Function)
-    );
+    expect(converseWithToolSpy).toHaveBeenCalledTimes(1);
+    const [systemPrompt, history, text, tools] = converseWithToolSpy.mock.calls[0];
+    expect(systemPrompt).toContain(onboardingLib.ONBOARDING_SYSTEM_PROMPT);
+    expect(systemPrompt).toMatch(/Date du jour : \d{4}-\d{2}-\d{2}\./);
+    expect(systemPrompt).toContain(SAFETY_GUARDRAILS_PROMPT);
+    expect(history).toEqual([]);
+    expect(text).toBe('80kg');
+    expect(tools).toEqual([onboardingLib.ONBOARDING_TOOL, FLAG_CONCERN_TOOL]);
     expect(sendSpy).toHaveBeenCalledWith(12345, 'Quel est ton poids ?');
   });
 
