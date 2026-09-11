@@ -390,6 +390,7 @@ const DASHBOARD_HTML = `<!doctype html>
         valueEl.textContent = Math.round(value);
         subEl.textContent = Math.round(value) + ' / ' + Math.round(target) + ' ' + unit;
       } else {
+        setRing(prefix + '-ring-progress', 0);
         valueEl.textContent = Math.round(value);
         subEl.textContent = Math.round(value) + ' ' + unit;
       }
@@ -424,6 +425,7 @@ const DASHBOARD_HTML = `<!doctype html>
         proteinEl.textContent = (proteinDelta > 0 ? '+' : '') + Math.round(proteinDelta) + ' g';
         proteinEl.className = 'delta-chip-value ' + (proteinDelta < 0 ? 'warn' : 'good');
       } else {
+        setRing('protein-ring-progress', 0);
         document.getElementById('protein-ring-value').textContent = Math.round(summary.proteinG);
         document.getElementById('protein-ring-sub').textContent = Math.round(summary.proteinG) + ' g';
         document.getElementById('protein-delta-value').textContent = 'pas de cible';
