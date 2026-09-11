@@ -89,6 +89,7 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
   }
 
   const isAtypicalByDate = new Map(dayPlans.map((p) => [p.date, p.isAtypical]));
+  const eventBonusByDate = new Map(dayPlans.map((p) => [p.date, p.eventBonusKcal ?? 0]));
   const weightByDate = new Map(weights.map((w) => [w.date, w.weightKg]));
 
   const intakes: DailyIntake[] = [];
@@ -186,6 +187,11 @@ export async function runDailyRecompute(date: string): Promise<DailyRecomputeRes
 
       targetKcal = finalTargetKcal;
     }
+  }
+
+  const eventBonusKcal = eventBonusByDate.get(date) ?? 0;
+  if (targetKcal !== null && eventBonusKcal !== 0) {
+    targetKcal = targetKcal + eventBonusKcal;
   }
 
   const todayMacros = macrosByDate.get(date) ?? { proteinG: 0, carbsG: 0, fatG: 0 };
