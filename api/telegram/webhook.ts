@@ -21,6 +21,7 @@ import { LOG_WEIGHT_TOOL, handleLogWeightTool } from '../../lib/weight.js';
 import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL, handleLogMealTool, handleLogWeighedMealTool } from '../../lib/meals.js';
 import { SET_BODY_SCAN_TOOL, handleSetBodyScanTool, BODY_SCAN_PDF_PROMPT } from '../../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL, handleTriggerRebaselineTool } from '../../lib/rebaseline.js';
+import { LOG_ACTIVITY_TOOL, handleLogActivityTool } from '../../lib/activity.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT, handleFlagConcernTool } from '../../lib/safety.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -65,6 +66,7 @@ const GENERAL_CHAT_TOOLS = [
   LOG_WEIGHED_MEAL_TOOL,
   SET_BODY_SCAN_TOOL,
   TRIGGER_REBASELINE_TOOL,
+  LOG_ACTIVITY_TOOL,
   FLAG_CONCERN_TOOL,
 ];
 
@@ -75,6 +77,7 @@ async function handleGeneralChatTool(name: string, input: Record<string, unknown
   if (name === 'log_weighed_meal') return handleLogWeighedMealTool(input);
   if (name === 'set_body_scan') return handleSetBodyScanTool(input);
   if (name === 'trigger_rebaseline') return handleTriggerRebaselineTool(input);
+  if (name === 'log_activity') return handleLogActivityTool(input);
   if (name === 'flag_concern') return handleFlagConcernTool(input);
   return handleScenarioTool(name, input);
 }
