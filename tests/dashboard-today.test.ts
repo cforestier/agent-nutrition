@@ -57,10 +57,59 @@ describe('GET /api/dashboard/today', () => {
     const cookieValue = cookieHeader.split(';')[0];
 
     const res = mockRes();
-    await handler({ headers: { cookie: cookieValue } } as any, res as any);
+    await handler({ headers: { cookie: cookieValue }, query: {} } as any, res as any);
 
     expect(getTodaySpy).toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual(summary);
+  });
+
+  it('returns the summary for an explicit ?date= query param', async () => {
+    const summary = {
+      date: '2026-02-10',
+      totalKcal: 0,
+      proteinG: 0,
+      carbsG: 0,
+      fatG: 0,
+      targetKcal: null,
+      proteinTargetMinG: null,
+      proteinTargetMaxG: null,
+      fatTargetG: null,
+      carbsTargetG: null,
+    };
+    const getTodaySpy = vi.spyOn(todaySummaryLib, 'getTodaySummary').mockResolvedValue(summary);
+    const cookieHeader = buildSessionCookieHeader('correct-horse');
+    const cookieValue = cookieHeader.split(';')[0];
+
+    const res = mockRes();
+    await handler({ headers: { cookie: cookieValue }, query: { date: '2026-02-10' } } as any, res as any);
+
+    expect(getTodaySpy).toHaveBeenCalledWith('2026-02-10');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual(summary);
+  });
+
+  it('falls back to today when the date query param is malformed', async () => {
+    const getTodaySpy = vi.spyOn(todaySummaryLib, 'getTodaySummary').mockResolvedValue({
+      date: '2026-01-01',
+      totalKcal: 0,
+      proteinG: 0,
+      carbsG: 0,
+      fatG: 0,
+      targetKcal: null,
+      proteinTargetMinG: null,
+      proteinTargetMaxG: null,
+      fatTargetG: null,
+      carbsTargetG: null,
+    });
+    const cookieHeader = buildSessionCookieHeader('correct-horse');
+    const cookieValue = cookieHeader.split(';')[0];
+
+    const res = mockRes();
+    await handler({ headers: { cookie: cookieValue }, query: { date: 'not-a-date' } } as any, res as any);
+
+    expect(res.statusCode).toBe(200);
+    const calledWith = getTodaySpy.mock.calls[0][0];
+    expect(calledWith).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });

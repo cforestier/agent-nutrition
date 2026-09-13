@@ -202,6 +202,114 @@ const DASHBOARD_HTML = `<!doctype html>
     box-shadow: 0 8px 20px rgba(34, 158, 217, 0.25);
   }
 
+  .journal-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-bottom: 0.7rem;
+  }
+  .journal-controls > button {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .journal-controls > button:disabled { opacity: 0.35; cursor: default; }
+
+  .journal-date-picker { position: relative; display: flex; align-items: center; gap: 0.4rem; }
+  .journal-date-picker input[type='date'] {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 0.5rem 0.6rem;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color-scheme: dark;
+  }
+  .journal-date-picker > button {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    width: 2.2rem;
+    height: 2.2rem;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+
+  .journal-calendar {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 0.85rem;
+    z-index: 20;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    width: 260px;
+  }
+  .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.6rem; }
+  .calendar-header button { background: none; border: none; color: var(--text); font-size: 1rem; cursor: pointer; width: 1.8rem; height: 1.8rem; }
+  .calendar-header button:disabled { opacity: 0.3; cursor: default; }
+  .calendar-header span { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; text-transform: capitalize; }
+  .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.2rem; }
+  .calendar-weekdays span { text-align: center; font-size: 0.65rem; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .calendar-cell {
+    background: none;
+    border: none;
+    color: var(--text);
+    border-radius: 8px;
+    aspect-ratio: 1;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.76rem;
+    cursor: pointer;
+  }
+  .calendar-cell.empty { visibility: hidden; cursor: default; }
+  .calendar-cell:hover:not(:disabled):not(.empty) { background: rgba(245, 239, 230, 0.08); }
+  .calendar-cell.today { border: 1px solid var(--amber); }
+  .calendar-cell.selected { background: var(--amber); color: #1a1006; font-weight: 600; }
+  .calendar-cell.future, .calendar-cell:disabled { opacity: 0.3; cursor: default; }
+
+  .journal-date-label {
+    text-align: center;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    text-transform: capitalize;
+    margin: 0 0 0.9rem;
+  }
+
+  .recap-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 1.1rem; }
+  .recap-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 0.6rem 0.5rem; text-align: center; }
+  .recap-label { display: block; font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.2rem; }
+  .recap-value { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.86rem; font-weight: 600; }
+
+  .log-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .log-table th {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.64rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0 0.5rem 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-table td { padding: 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .log-table td.log-table-kcal { text-align: right; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+  .log-table tbody tr:last-child td { border-bottom: none; }
+  .journal-extras { margin-top: 0.7rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.74rem; color: var(--text-muted); }
+  .journal-empty { color: var(--text-muted); font-size: 0.86rem; }
+
   @keyframes rise {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -292,6 +400,32 @@ const DASHBOARD_HTML = `<!doctype html>
           <h2>Lipides (g)</h2>
           <div id="fat-chart"></div>
         </div>
+      </section>
+
+      <section class="journal-section">
+        <h2>Journal</h2>
+        <div class="journal-controls">
+          <button type="button" id="journal-prev" aria-label="Jour précédent">←</button>
+          <div class="journal-date-picker">
+            <input type="date" id="journal-date-input" />
+            <button type="button" id="journal-calendar-toggle" aria-label="Ouvrir le calendrier">📅</button>
+            <div id="journal-calendar" class="journal-calendar" hidden>
+              <div class="calendar-header">
+                <button type="button" id="calendar-prev-month" aria-label="Mois précédent">‹</button>
+                <span id="calendar-month-label">--</span>
+                <button type="button" id="calendar-next-month" aria-label="Mois suivant">›</button>
+              </div>
+              <div class="calendar-weekdays">
+                <span>L</span><span>M</span><span>M</span><span>J</span><span>V</span><span>S</span><span>D</span>
+              </div>
+              <div class="calendar-grid" id="calendar-grid"></div>
+            </div>
+          </div>
+          <button type="button" id="journal-next" aria-label="Jour suivant">→</button>
+        </div>
+        <p class="journal-date-label" id="journal-date-label">--</p>
+        <div id="journal-recap"></div>
+        <div id="journal-content"></div>
       </section>
 
       <a class="telegram-link" href="https://t.me/${BOT_USERNAME}">Ouvrir le chat Telegram</a>
@@ -467,10 +601,227 @@ const DASHBOARD_HTML = `<!doctype html>
       renderLineChart('fat-chart', macros.map(function (m) { return { date: m.date, value: m.fatG }; }));
     }
 
+    var SPORT_LABELS = { cycling: 'Vélo', running: 'Course à pied', strength: 'Musculation', crossfit: 'Crossfit', other: 'Autre' };
+    var INTENSITY_LABELS = { light: 'léger', moderate: 'modéré', sustained: 'soutenu', vigorous: 'vigoureux', maximal: 'maximal' };
+
+    function todayIso() {
+      return new Date().toLocaleDateString('en-CA');
+    }
+
+    function addDaysIso(dateStr, delta) {
+      const date = new Date(dateStr + 'T00:00:00Z');
+      date.setUTCDate(date.getUTCDate() + delta);
+      return date.toISOString().slice(0, 10);
+    }
+
+    function pad2(n) {
+      return n < 10 ? '0' + n : '' + n;
+    }
+
+    function isoDate(year, monthIndex, day) {
+      return year + '-' + pad2(monthIndex + 1) + '-' + pad2(day);
+    }
+
+    var journalDate = todayIso();
+    var calendarViewYear = Number(journalDate.slice(0, 4));
+    var calendarViewMonth = Number(journalDate.slice(5, 7)) - 1;
+
+    function formatStat(value, target, unit) {
+      const v = Math.round(value);
+      if (target === null || target === undefined) return v + ' ' + unit;
+      return v + ' / ' + Math.round(target) + ' ' + unit;
+    }
+
+    function renderDayRecap(summary) {
+      document.getElementById('journal-recap').innerHTML =
+        '<div class="recap-grid">' +
+          '<div class="recap-stat"><span class="recap-label">Calories</span><span class="recap-value">' + formatStat(summary.totalKcal, summary.targetKcal, 'kcal') + '</span></div>' +
+          '<div class="recap-stat"><span class="recap-label">Protéines</span><span class="recap-value">' + formatStat(summary.proteinG, summary.proteinTargetMinG, 'g') + '</span></div>' +
+          '<div class="recap-stat"><span class="recap-label">Glucides</span><span class="recap-value">' + formatStat(summary.carbsG, summary.carbsTargetG, 'g') + '</span></div>' +
+          '<div class="recap-stat"><span class="recap-label">Lipides</span><span class="recap-value">' + formatStat(summary.fatG, summary.fatTargetG, 'g') + '</span></div>' +
+        '</div>';
+    }
+
+    async function loadDayRecap() {
+      const res = await fetch('/api/dashboard/today?date=' + journalDate);
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+      const summary = await res.json();
+      showDashboard();
+      renderDayRecap(summary);
+    }
+
+    function renderJournal(journal) {
+      const rows = [];
+
+      journal.meals.forEach(function (meal) {
+        rows.push({ time: meal.time, type: 'Repas', detail: meal.rawDescription, kcal: meal.kcalMid });
+      });
+
+      journal.activities.forEach(function (activity) {
+        const sportLabel = SPORT_LABELS[activity.sportType] || activity.sportType;
+        var detailParts = [sportLabel + ' — ' + activity.description];
+        if (activity.durationMinutes && activity.intensity) {
+          detailParts.push(Math.round(activity.durationMinutes) + ' min, intensité ' + (INTENSITY_LABELS[activity.intensity] || activity.intensity));
+        }
+        detailParts.push(activity.estimationMethod === 'met_estimate' ? 'estimé' : 'montre/tracker');
+        detailParts.push(activity.relationToPlan === 'replaces' ? 'remplace le prévu' : 'en plus du prévu');
+        rows.push({ time: activity.time, type: 'Activité', detail: detailParts.join(' · '), kcal: activity.reportedCalories });
+      });
+
+      rows.sort(function (a, b) {
+        return a.time < b.time ? -1 : a.time > b.time ? 1 : 0;
+      });
+
+      var extras = [];
+      if (journal.weightKg !== null) extras.push('Poids : ' + journal.weightKg + ' kg');
+      if (journal.sleepQuality !== null) extras.push('Sommeil : ' + journal.sleepQuality);
+
+      if (!rows.length && !extras.length) {
+        document.getElementById('journal-content').innerHTML = '<p class="journal-empty">Rien de loggé ce jour-là.</p>';
+        return;
+      }
+
+      const tableHtml = rows.length
+        ? '<table class="log-table"><thead><tr><th>Heure</th><th>Type</th><th>Détail</th><th>Kcal</th></tr></thead><tbody>' +
+          rows.map(function (r) {
+            return '<tr><td>' + r.time + '</td><td>' + r.type + '</td><td>' + r.detail + '</td><td class="log-table-kcal">' + Math.round(r.kcal) + '</td></tr>';
+          }).join('') +
+          '</tbody></table>'
+        : '<p class="journal-empty">Aucun repas ni activité ce jour-là.</p>';
+
+      const extrasHtml = extras.length ? '<p class="journal-extras">' + extras.join(' · ') + '</p>' : '';
+
+      document.getElementById('journal-content').innerHTML = tableHtml + extrasHtml;
+    }
+
+    async function loadJournal() {
+      const res = await fetch('/api/dashboard/journal?date=' + journalDate);
+      if (res.status === 401) {
+        showLogin();
+        return;
+      }
+      const journal = await res.json();
+      showDashboard();
+      renderJournal(journal);
+    }
+
+    function updateDateLabel() {
+      const dateLabel = new Date(journalDate + 'T00:00:00').toLocaleDateString('fr-FR', {
+        weekday: 'long', day: 'numeric', month: 'long',
+      });
+      document.getElementById('journal-date-label').textContent = dateLabel;
+      document.getElementById('journal-next').disabled = journalDate >= todayIso();
+    }
+
+    function syncDateInput() {
+      const input = document.getElementById('journal-date-input');
+      input.value = journalDate;
+      input.max = todayIso();
+    }
+
+    function closeCalendar() {
+      document.getElementById('journal-calendar').hidden = true;
+    }
+
+    function renderCalendar() {
+      const monthLabel = new Date(calendarViewYear, calendarViewMonth, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+      document.getElementById('calendar-month-label').textContent = monthLabel;
+
+      const firstWeekday = (new Date(calendarViewYear, calendarViewMonth, 1).getDay() + 6) % 7;
+      const totalDays = new Date(calendarViewYear, calendarViewMonth + 1, 0).getDate();
+      const today = todayIso();
+
+      var cells = '';
+      for (let i = 0; i < firstWeekday; i++) {
+        cells += '<span class="calendar-cell empty"></span>';
+      }
+      for (let d = 1; d <= totalDays; d++) {
+        const iso = isoDate(calendarViewYear, calendarViewMonth, d);
+        var classes = 'calendar-cell';
+        if (iso === journalDate) classes += ' selected';
+        if (iso === today) classes += ' today';
+        const isFuture = iso > today;
+        if (isFuture) classes += ' future';
+        cells += '<button type="button" class="' + classes + '" data-date="' + iso + '"' + (isFuture ? ' disabled' : '') + '>' + d + '</button>';
+      }
+      document.getElementById('calendar-grid').innerHTML = cells;
+
+      const now = new Date();
+      document.getElementById('calendar-next-month').disabled =
+        calendarViewYear > now.getFullYear() || (calendarViewYear === now.getFullYear() && calendarViewMonth >= now.getMonth());
+    }
+
+    function loadDay() {
+      updateDateLabel();
+      syncDateInput();
+      loadJournal();
+      loadDayRecap();
+    }
+
+    document.getElementById('journal-prev').addEventListener('click', function () {
+      journalDate = addDaysIso(journalDate, -1);
+      loadDay();
+    });
+
+    document.getElementById('journal-next').addEventListener('click', function () {
+      if (journalDate >= todayIso()) return;
+      journalDate = addDaysIso(journalDate, 1);
+      loadDay();
+    });
+
+    document.getElementById('journal-date-input').addEventListener('change', function (e) {
+      if (!e.target.value) return;
+      journalDate = e.target.value;
+      closeCalendar();
+      loadDay();
+    });
+
+    document.getElementById('journal-calendar-toggle').addEventListener('click', function () {
+      const cal = document.getElementById('journal-calendar');
+      if (cal.hidden) {
+        calendarViewYear = Number(journalDate.slice(0, 4));
+        calendarViewMonth = Number(journalDate.slice(5, 7)) - 1;
+        renderCalendar();
+        cal.hidden = false;
+      } else {
+        cal.hidden = true;
+      }
+    });
+
+    document.getElementById('calendar-prev-month').addEventListener('click', function () {
+      calendarViewMonth--;
+      if (calendarViewMonth < 0) {
+        calendarViewMonth = 11;
+        calendarViewYear--;
+      }
+      renderCalendar();
+    });
+
+    document.getElementById('calendar-next-month').addEventListener('click', function () {
+      calendarViewMonth++;
+      if (calendarViewMonth > 11) {
+        calendarViewMonth = 0;
+        calendarViewYear++;
+      }
+      renderCalendar();
+    });
+
+    document.getElementById('calendar-grid').addEventListener('click', function (e) {
+      const target = e.target.closest('button[data-date]');
+      if (!target || target.disabled) return;
+      journalDate = target.getAttribute('data-date');
+      closeCalendar();
+      loadDay();
+    });
+
     function loadDashboard() {
       loadToday();
       loadWeights();
       loadMacros();
+      loadDay();
     }
 
     document.getElementById('login-form').addEventListener('submit', function (e) {

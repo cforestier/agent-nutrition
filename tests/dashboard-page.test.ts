@@ -80,4 +80,16 @@ describe('GET /api/dashboard', () => {
     expect(res.body).toContain('id="kcal-delta-value"');
     expect(res.body).toContain('id="protein-delta-value"');
   });
+
+  it('includes the journal date picker, month calendar, recap and log table wiring', () => {
+    const res = mockRes();
+    handler({ method: 'GET' } as any, res as any);
+    expect(res.body).toContain('/api/dashboard/journal');
+    expect(res.body).toContain('id="journal-date-input"');
+    expect(res.body).toContain('id="journal-calendar-toggle"');
+    expect(res.body).toContain('id="calendar-grid"');
+    expect(res.body).toContain('id="journal-recap"');
+    expect(res.body).toContain('id="journal-content"');
+    expect(res.body).toContain('class="log-table"');
+  });
 });
