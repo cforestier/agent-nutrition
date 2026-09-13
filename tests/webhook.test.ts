@@ -12,6 +12,7 @@ import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL } from '../lib/meals.js';
 import { SET_BODY_SCAN_TOOL, BODY_SCAN_PDF_PROMPT } from '../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL } from '../lib/rebaseline.js';
 import { LOG_ACTIVITY_TOOL } from '../lib/activity.js';
+import { DEFINE_ACTIVITY_ROUTINE_TOOL, APPLY_ACTIVITY_ROUTINE_TOOL } from '../lib/activityRoutine.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 import * as sleepLib from '../lib/sleep.js';
 
@@ -91,6 +92,8 @@ describe('POST /api/telegram/webhook', () => {
         SET_BODY_SCAN_TOOL,
         TRIGGER_REBASELINE_TOOL,
         LOG_ACTIVITY_TOOL,
+        DEFINE_ACTIVITY_ROUTINE_TOOL,
+        APPLY_ACTIVITY_ROUTINE_TOOL,
         FLAG_CONCERN_TOOL,
       ],
       expect.any(Function)
@@ -172,6 +175,8 @@ describe('POST /api/telegram/webhook', () => {
         SET_BODY_SCAN_TOOL,
         TRIGGER_REBASELINE_TOOL,
         LOG_ACTIVITY_TOOL,
+        DEFINE_ACTIVITY_ROUTINE_TOOL,
+        APPLY_ACTIVITY_ROUTINE_TOOL,
         FLAG_CONCERN_TOOL,
       ],
       expect.any(Function),

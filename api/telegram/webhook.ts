@@ -22,6 +22,12 @@ import { LOG_MEAL_TOOL, LOG_WEIGHED_MEAL_TOOL, handleLogMealTool, handleLogWeigh
 import { SET_BODY_SCAN_TOOL, handleSetBodyScanTool, BODY_SCAN_PDF_PROMPT } from '../../lib/bodyScan.js';
 import { TRIGGER_REBASELINE_TOOL, handleTriggerRebaselineTool } from '../../lib/rebaseline.js';
 import { LOG_ACTIVITY_TOOL, handleLogActivityTool } from '../../lib/activity.js';
+import {
+  DEFINE_ACTIVITY_ROUTINE_TOOL,
+  APPLY_ACTIVITY_ROUTINE_TOOL,
+  handleDefineActivityRoutineTool,
+  handleApplyActivityRoutineTool,
+} from '../../lib/activityRoutine.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT, handleFlagConcernTool } from '../../lib/safety.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -70,6 +76,8 @@ const GENERAL_CHAT_TOOLS = [
   SET_BODY_SCAN_TOOL,
   TRIGGER_REBASELINE_TOOL,
   LOG_ACTIVITY_TOOL,
+  DEFINE_ACTIVITY_ROUTINE_TOOL,
+  APPLY_ACTIVITY_ROUTINE_TOOL,
   FLAG_CONCERN_TOOL,
 ];
 
@@ -81,6 +89,8 @@ async function handleGeneralChatTool(name: string, input: Record<string, unknown
   if (name === 'set_body_scan') return handleSetBodyScanTool(input);
   if (name === 'trigger_rebaseline') return handleTriggerRebaselineTool(input);
   if (name === 'log_activity') return handleLogActivityTool(input);
+  if (name === 'define_activity_routine') return handleDefineActivityRoutineTool(input);
+  if (name === 'apply_activity_routine') return handleApplyActivityRoutineTool(input);
   if (name === 'flag_concern') return handleFlagConcernTool(input);
   return handleScenarioTool(name, input);
 }
