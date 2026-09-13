@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
-import { handleLogActivityTool, lookupMet, metToKcal } from '../lib/activity.js';
+import { handleLogActivityTool, lookupMet, metToKcal, recomputeEventBonusForDate } from '../lib/activity.js';
 import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 
@@ -20,7 +20,7 @@ function baseProfile(currentTargetKcal: number | null) {
 }
 
 describe('handleLogActivityTool', () => {
-  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11', '1999-07-12'];
+  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11', '1999-07-12', '1999-07-13'];
 
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { date: { in: dates } } });
@@ -84,14 +84,14 @@ describe('handleLogActivityTool', () => {
       relationToPlan: 'replaces',
     });
 
-    // rawDiff = 350 - 300 = 50; discounted = 50 * (1 - 0.25) = 37.5; < 100 -> bonus = 0
     expect(result).toContain('trop faible');
 
     const log = await prisma.activityLog.findFirst({ where: { date: dates[2] } });
     expect(log?.bonusKcal).toBe(0);
 
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[2] } });
-    expect(dayPlan).toBeNull();
+    expect(dayPlan?.eventBonusKcal).toBe(0);
+    expect(dayPlan?.isAtypical).toBe(false);
   });
 
   it('reduces the target when the actual effort was well below what was planned', async () => {
@@ -195,6 +195,30 @@ describe('handleLogActivityTool', () => {
     expect(result).toContain('74');
     expect(result).toContain('trop faible');
   });
+
+  it('sums bonuses across multiple activities logged the same day instead of overwriting', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    await handleLogActivityTool({
+      date: dates[8],
+      description: 'vélo du matin',
+      sportType: 'cycling',
+      reportedCalories: 400,
+      relationToPlan: 'additional',
+    });
+    await handleLogActivityTool({
+      date: dates[8],
+      description: 'course du midi',
+      sportType: 'running',
+      reportedCalories: 300,
+      relationToPlan: 'additional',
+    });
+
+    // bonus1 = 400*(1-0.2)=320 ; bonus2 = 300*(1-0.25)=225
+    const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[8] } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(320 + 225, 5);
+  });
 });
 
 describe('metToKcal / lookupMet', () => {
@@ -208,5 +232,29 @@ describe('metToKcal / lookupMet', () => {
 
   it('looks up the new walking MET table', () => {
     expect(lookupMet('walking', 'light')).toBe(2.8);
+  });
+});
+
+describe('recomputeEventBonusForDate', () => {
+  const date = '1998-05-01';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date } });
+    await prisma.dayPlan.deleteMany({ where: { date } });
+  });
+
+  it('sums bonusKcal across all ActivityLog rows for the date', async () => {
+    await prisma.activityLog.createMany({
+      data: [
+        { date, description: 'a', sportType: 'cycling', reportedCalories: 100, relationToPlan: 'additional', baselineKcal: 0, rawDiffKcal: 100, discountPct: 0, bonusKcal: 150 },
+        { date, description: 'b', sportType: 'running', reportedCalories: 100, relationToPlan: 'additional', baselineKcal: 0, rawDiffKcal: 100, discountPct: 0, bonusKcal: 50 },
+      ],
+    });
+
+    await recomputeEventBonusForDate(date);
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBe(200);
+    expect(dayPlan?.isAtypical).toBe(true);
   });
 });

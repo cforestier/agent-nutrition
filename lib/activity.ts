@@ -34,6 +34,16 @@ export function metToKcal(met: number, durationMinutes: number, weightKg: number
   return Math.round(((met * 3.5 * weightKg) / 200) * durationMinutes);
 }
 
+export async function recomputeEventBonusForDate(date: string): Promise<void> {
+  const logs = await prisma.activityLog.findMany({ where: { date } });
+  const total = logs.reduce((sum, log) => sum + log.bonusKcal, 0);
+  await prisma.dayPlan.upsert({
+    where: { date },
+    create: { date, scenariosApplied: [], segmentsResolved: [], isAtypical: total !== 0, eventBonusKcal: total },
+    update: { isAtypical: total !== 0, eventBonusKcal: total },
+  });
+}
+
 const MATERIALITY_THRESHOLD_KCAL = 100;
 
 export interface LogActivityInput {
@@ -134,23 +144,13 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
     },
   });
 
+  await recomputeEventBonusForDate(input.date);
+
   const calorieNote = estimationMethod === 'met_estimate' ? `${reportedCalories} kcal estimées` : `${reportedCalories} kcal`;
 
   if (bonusKcal === 0) {
     return `Activité enregistrée (${input.description}, ${calorieNote}). Écart avec le prévu trop faible (moins de ${MATERIALITY_THRESHOLD_KCAL} kcal après rabais) pour ajuster ta cible — considérée comme normale.`;
   }
-
-  await prisma.dayPlan.upsert({
-    where: { date: input.date },
-    create: {
-      date: input.date,
-      scenariosApplied: [],
-      segmentsResolved: [],
-      isAtypical: true,
-      eventBonusKcal: bonusKcal,
-    },
-    update: { isAtypical: true, eventBonusKcal: bonusKcal },
-  });
 
   const sign = bonusKcal > 0 ? '+' : '';
   const newTargetNote =
