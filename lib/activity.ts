@@ -54,6 +54,8 @@ export interface LogActivityInput {
   durationMinutes?: number;
   intensity?: Intensity;
   relationToPlan: 'replaces' | 'additional';
+  status?: 'done' | 'planned';
+  plannedTime?: string;
 }
 
 export const LOG_ACTIVITY_TOOL: ToolDefinition = {
@@ -80,6 +82,8 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
         description: "Intensité ressentie, si pas de donnée de montre.",
       },
       relationToPlan: { type: 'string', enum: ['replaces', 'additional'] },
+      status: { type: 'string', enum: ['done', 'planned'], description: "'planned' si l'activité n'a pas encore eu lieu, annoncée à l'avance" },
+      plannedTime: { type: 'string', description: "HH:MM, requis quand status = 'planned'" },
     },
     required: ['date', 'description', 'sportType', 'relationToPlan'],
   },
@@ -87,6 +91,7 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
 
 export async function handleLogActivityTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as LogActivityInput;
+  const status = input.status ?? 'done';
 
   const hasDeviceCalories = input.reportedCalories !== undefined;
   const hasDurationAndIntensity = input.durationMinutes !== undefined && input.intensity !== undefined;
@@ -126,23 +131,34 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
   const adjustedDiffKcal = rawDiffKcal * (1 - discountPct);
   const bonusKcal = Math.abs(adjustedDiffKcal) >= MATERIALITY_THRESHOLD_KCAL ? adjustedDiffKcal : 0;
 
-  await prisma.activityLog.create({
-    data: {
-      date: input.date,
-      description: input.description,
-      sportType: input.sportType,
-      reportedCalories,
-      relationToPlan: input.relationToPlan,
-      baselineKcal,
-      rawDiffKcal,
-      discountPct,
-      bonusKcal,
-      intensity: input.intensity,
-      durationMinutes: input.durationMinutes,
-      estimationMethod,
-      metUsed: metUsed ?? undefined,
-    },
+  const existingPlanned = await prisma.activityLog.findFirst({
+    where: { date: input.date, sportType: input.sportType, routineId: null, status: 'planned' },
   });
+
+  const activityData = {
+    date: input.date,
+    description: input.description,
+    sportType: input.sportType,
+    reportedCalories,
+    relationToPlan: input.relationToPlan,
+    baselineKcal,
+    rawDiffKcal,
+    discountPct,
+    bonusKcal,
+    intensity: input.intensity,
+    durationMinutes: input.durationMinutes,
+    estimationMethod,
+    metUsed: metUsed ?? undefined,
+    status,
+    plannedTime: input.plannedTime,
+    routineId: null,
+  };
+
+  if (existingPlanned) {
+    await prisma.activityLog.update({ where: { id: existingPlanned.id }, data: activityData });
+  } else {
+    await prisma.activityLog.create({ data: activityData });
+  }
 
   await recomputeEventBonusForDate(input.date);
 

@@ -20,7 +20,7 @@ function baseProfile(currentTargetKcal: number | null) {
 }
 
 describe('handleLogActivityTool', () => {
-  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11', '1999-07-12', '1999-07-13'];
+  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11', '1999-07-12', '1999-07-13', '1999-07-14'];
 
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { date: { in: dates } } });
@@ -218,6 +218,46 @@ describe('handleLogActivityTool', () => {
     // bonus1 = 400*(1-0.2)=320 ; bonus2 = 300*(1-0.25)=225
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[8] } });
     expect(dayPlan?.eventBonusKcal).toBeCloseTo(320 + 225, 5);
+  });
+
+  it('logs a planned (not-yet-done) activity ahead of time, applying the bonus proactively', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[9],
+      description: 'course prévue à midi',
+      sportType: 'running',
+      durationMinutes: 30,
+      intensity: 'moderate',
+      relationToPlan: 'additional',
+      status: 'planned',
+      plannedTime: '12:00',
+    });
+
+    expect(result).toContain('estimées');
+
+    const log = await prisma.activityLog.findFirst({ where: { date: dates[9] } });
+    expect(log?.status).toBe('planned');
+    expect(log?.plannedTime).toBe('12:00');
+  });
+
+  it('updates the same planned entry in place when confirmed later instead of duplicating it', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    await handleLogActivityTool({
+      date: dates[9],
+      description: 'course confirmée',
+      sportType: 'running',
+      reportedCalories: 350,
+      relationToPlan: 'additional',
+    });
+
+    const logs = await prisma.activityLog.findMany({ where: { date: dates[9], sportType: 'running' } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].status).toBe('done');
+    expect(logs[0].reportedCalories).toBe(350);
   });
 });
 
