@@ -30,6 +30,9 @@ describe('runNotificationTick', () => {
     await prisma.notification.deleteMany({ where: { date: TEST_DATE } });
     await prisma.dayPlan.deleteMany({ where: { date: TEST_DATE } });
     await prisma.weight.deleteMany({ where: { date: TEST_DATE } });
+    await prisma.activityLog.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13'] } } });
+    await prisma.dayPlan.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13'] } } });
+    await prisma.activityRoutine.deleteMany({ where: { name: { in: ['aller au bureau test', 'routine déjà loggée'] } } });
   });
 
   it('sends nothing and skips entirely during quiet hours', async () => {
@@ -127,5 +130,96 @@ describe('runNotificationTick', () => {
       where: { date_rule: { date: TEST_DATE, rule: 'weekly_macro_insight' } },
     });
     expect(recorded).not.toBeNull();
+  });
+
+  it('auto-applies a due recurring routine, sends a confirm/cancel prompt, and creates the planned ActivityLog', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile());
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1998-04-06T07:00:00Z') });
+    vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
+    vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+    const sendKeyboardSpy = vi.spyOn(telegramLib, 'sendMessageWithKeyboard').mockResolvedValue();
+
+    const routine = await prisma.activityRoutine.create({
+      data: {
+        name: 'aller au bureau test',
+        aliases: [],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: ['monday'], // 1998-04-06 est un lundi
+      },
+    });
+
+    const result = await runNotificationTick(new Date('1998-04-06T06:30:00Z'), 12345);
+
+    expect(result.sent.map((s) => s.rule)).toContain(`routine_auto_apply:${routine.id}`);
+    expect(sendKeyboardSpy).toHaveBeenCalledWith(
+      12345,
+      expect.stringContaining('aller au bureau test'),
+      expect.arrayContaining([
+        expect.objectContaining({ text: 'Confirmer' }),
+        expect.objectContaining({ text: "Pas aujourd'hui" }),
+      ])
+    );
+
+    const log = await prisma.activityLog.findFirst({ where: { date: '1998-04-06', routineId: routine.id } });
+    expect(log?.status).toBe('planned');
+    expect(log?.bonusKcal).toBeCloseTo(240, 5); // 300 * (1-0.2)
+
+    const dayPlan = await prisma.dayPlan.findFirst({ where: { date: '1998-04-06' } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(240, 5);
+  });
+
+  it('does not re-apply a routine that already has a log for today', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile());
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1998-04-13T07:00:00Z') });
+    vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
+    vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+    vi.spyOn(telegramLib, 'sendMessageWithKeyboard').mockResolvedValue();
+
+    // The previous test's routine ("aller au bureau test", recurringWeekdays: ['monday']) has no
+    // ActivityLog for this test's date (1998-04-13), so it would otherwise also show up as "due"
+    // here and get auto-applied ahead of this test's routine. Only afterAll normally cleans it up
+    // (deliberately, so a mid-test assertion failure doesn't skip cleanup), so remove it explicitly
+    // here to keep this test's own scenario isolated.
+    await prisma.activityRoutine.deleteMany({ where: { name: 'aller au bureau test' } });
+
+    const routine = await prisma.activityRoutine.create({
+      data: {
+        name: 'routine déjà loggée',
+        aliases: [],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: ['monday'], // 1998-04-13 est aussi un lundi
+      },
+    });
+    await prisma.activityLog.create({
+      data: {
+        date: '1998-04-13',
+        description: routine.name,
+        sportType: 'other',
+        reportedCalories: 300,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: 300,
+        discountPct: 0.2,
+        bonusKcal: 240,
+        routineId: routine.id,
+        status: 'done',
+      },
+    });
+
+    const result = await runNotificationTick(new Date('1998-04-13T06:30:00Z'), 12345);
+
+    expect(result.sent.map((s) => s.rule)).not.toEqual(
+      expect.arrayContaining([expect.stringContaining('routine_auto_apply')])
+    );
   });
 });

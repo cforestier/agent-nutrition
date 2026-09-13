@@ -201,3 +201,53 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
   const note = isReal ? 'confirmée (réelle)' : 'appliquée par anticipation (estimation)';
   return `Routine "${routine.name}" ${note} pour le ${input.date} : ${bonusKcal.toFixed(0)} kcal de bonus (rabais ${(routine.blendedDiscountPct * 100).toFixed(0)}%).`;
 }
+
+export async function getDueRoutinesToday(weekday: string, date: string) {
+  const routines = await prisma.activityRoutine.findMany({ where: { recurringWeekdays: { has: weekday } } });
+  const due = [];
+  for (const routine of routines) {
+    const existing = await prisma.activityLog.findFirst({ where: { date, routineId: routine.id } });
+    if (!existing) due.push(routine);
+  }
+  return due;
+}
+
+export async function autoApplyRoutineForToday(
+  routine: { id: string; name: string; primarySportType: string | null; estimatedKcal: number; blendedDiscountPct: number; observedAvgKcal: number | null; timeRangeStart: string | null },
+  date: string
+): Promise<{ activityLogId: string; message: string }> {
+  const effectiveKcal = routine.observedAvgKcal ?? routine.estimatedKcal;
+  const bonusKcal = effectiveKcal * (1 - routine.blendedDiscountPct);
+
+  const log = await prisma.activityLog.create({
+    data: {
+      date,
+      description: routine.name,
+      sportType: routine.primarySportType ?? 'other',
+      reportedCalories: effectiveKcal,
+      relationToPlan: 'additional',
+      baselineKcal: 0,
+      rawDiffKcal: effectiveKcal,
+      discountPct: routine.blendedDiscountPct,
+      bonusKcal,
+      estimationMethod: 'met_estimate',
+      routineId: routine.id,
+      status: 'planned',
+      plannedTime: routine.timeRangeStart,
+    },
+  });
+
+  await recomputeEventBonusForDate(date);
+
+  const message = `Aujourd'hui, tu fais normalement "${routine.name}" — cible du jour ajustée de +${bonusKcal.toFixed(0)} kcal (estimation). Dis-moi si ce n'est pas le cas.`;
+
+  return { activityLogId: log.id, message };
+}
+
+export async function cancelPlannedActivity(activityLogId: string): Promise<boolean> {
+  const log = await prisma.activityLog.findUnique({ where: { id: activityLogId } });
+  if (!log) return false;
+  await prisma.activityLog.delete({ where: { id: activityLogId } });
+  await recomputeEventBonusForDate(log.date);
+  return true;
+}

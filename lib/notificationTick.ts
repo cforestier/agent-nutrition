@@ -15,6 +15,7 @@ import {
 } from './notificationStore.js';
 import { NOTIFICATION_RULES } from './notificationRules.js';
 import type { NotificationContext, WeeklyMacros } from './notificationRules.js';
+import { getDueRoutinesToday, autoApplyRoutineForToday } from './activityRoutine.js';
 
 const MAX_NOTIFICATIONS_PER_DAY = 4;
 const QUIET_HOUR_START = 22;
@@ -46,6 +47,21 @@ export async function runNotificationTick(now: Date, chatId: number): Promise<Ti
   }
 
   const weekday = weekdayOf(dateIso);
+  const sent: { rule: string; message: string }[] = [];
+
+  const dueRoutines = await getDueRoutinesToday(weekday, dateIso);
+  if (dueRoutines.length > 0 && sentCount < MAX_NOTIFICATIONS_PER_DAY) {
+    const routine = dueRoutines[0];
+    const { activityLogId, message } = await autoApplyRoutineForToday(routine, dateIso);
+    await sendMessageWithKeyboard(chatId, message, [
+      { text: 'Confirmer', callback_data: `routine:confirm:${activityLogId}` },
+      { text: "Pas aujourd'hui", callback_data: `routine:cancel:${activityLogId}` },
+    ]);
+    const rule = `routine_auto_apply:${routine.id}`;
+    await recordNotificationSent(dateIso, rule);
+    sent.push({ rule, message });
+    sentCount++;
+  }
 
   const [profile, weeklyDefault, todayWeight, todayDayPlan, latestMeal, latestDailyState, recentDailyStates, sleepQualities] =
     await Promise.all([
@@ -81,8 +97,6 @@ export async function runNotificationTick(now: Date, chatId: number): Promise<Ti
     weeklyMacros,
     recentSleepQualities: sleepQualities,
   };
-
-  const sent: { rule: string; message: string }[] = [];
 
   for (const rule of NOTIFICATION_RULES) {
     if (sentCount >= MAX_NOTIFICATIONS_PER_DAY) break;
