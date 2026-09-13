@@ -80,7 +80,27 @@ model ActivityLog {
   durationMinutes  Float?
   estimationMethod String?
   metUsed          Float?
+  routineId        String?
+  status           String   @default("done")
+  plannedTime      String?
   createdAt        DateTime @default(now())
+}
+
+model ActivityRoutine {
+  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
+  name               String   @unique
+  aliases            String[]
+  legs               Json?
+  primarySportType   String?
+  estimatedKcal      Float
+  blendedDiscountPct Float
+  observedAvgKcal    Float?
+  sampleCount        Int      @default(0)
+  recurringWeekdays  String[]
+  timeRangeStart     String?
+  timeRangeEnd       String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model WeeklyDefault {
