@@ -51,7 +51,7 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
   description:
     "Enregistre une activité physique rapportée par l'utilisateur. Deux façons de fournir la dépense calorique : " +
     "(1) reportedCalories si l'utilisateur a une valeur de sa montre/tracker — à privilégier quand elle est disponible ; " +
-    "(2) durationMinutes + intensity sinon, pour estimer la dépense via une table MET (uniquement disponible pour cycling/running/crossfit). " +
+    "(2) durationMinutes + intensity sinon, pour estimer la dépense via une table MET (uniquement disponible pour cycling/running/crossfit/walking). " +
     "Si l'utilisateur décrit une activité sans donnée de montre, demande-lui explicitement la durée ET l'intensité ressentie " +
     "(light = léger, moderate = modéré, sustained = soutenu, vigorous = vigoureux, maximal = maximal) avant d'appeler cet outil — ne devine jamais l'intensité. " +
     "Si l'utilisateur ne précise pas si cette activité REMPLACE l'activité initialement prévue pour la journée ou si elle est EN PLUS, " +
