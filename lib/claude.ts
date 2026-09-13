@@ -2,8 +2,12 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic();
 
-const MODEL = 'claude-opus-5';
+const MODEL = 'claude-sonnet-5';
 const MAX_TOKENS = 1024;
+
+function cachedSystemPrompt(systemPrompt: string): Anthropic.MessageCreateParams['system'] {
+  return [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral', ttl: '1h' } }];
+}
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -19,7 +23,7 @@ export async function converse(systemPrompt: string, messages: ChatMessage[]): P
   const response = await anthropic.messages.create({
     model: MODEL,
     max_tokens: MAX_TOKENS,
-    system: systemPrompt,
+    system: cachedSystemPrompt(systemPrompt),
     messages,
   });
 
@@ -72,7 +76,7 @@ export async function converseWithTool(
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      system: systemPrompt,
+      system: cachedSystemPrompt(systemPrompt),
       tools,
       messages,
     });

@@ -58,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   waitUntil(handlePdfMessage(parsed.chatId, parsed.fileId));
 }
 
-const HISTORY_MESSAGE_LIMIT = 40;
+const HISTORY_MESSAGE_LIMIT = 16;
 
 const GENERAL_CHAT_TOOLS = [
   ...SCENARIO_TOOLS,
