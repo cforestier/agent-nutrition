@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
-import { handleLogActivityTool } from '../lib/activity.js';
+import { handleLogActivityTool, lookupMet, metToKcal } from '../lib/activity.js';
 import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 
@@ -20,7 +20,7 @@ function baseProfile(currentTargetKcal: number | null) {
 }
 
 describe('handleLogActivityTool', () => {
-  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11'];
+  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11', '1999-07-12'];
 
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { date: { in: dates } } });
@@ -176,5 +176,37 @@ describe('handleLogActivityTool', () => {
     expect(result).toContain('poids');
     const log = await prisma.activityLog.findFirst({ where: { date: dates[6] } });
     expect(log).toBeNull();
+  });
+
+  it('estimates walking calories via the MET table', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[7],
+      description: "marche jusqu'à la gare",
+      sportType: 'walking',
+      durationMinutes: 15,
+      intensity: 'moderate',
+      relationToPlan: 'additional',
+    });
+
+    // met = 3.5 ; kcal = 3.5 * 3.5 * 80 / 200 * 15 = 73.5 -> 74 ; rabais other 35% -> 74*0.65=48.1 < seuil 100
+    expect(result).toContain('74');
+    expect(result).toContain('trop faible');
+  });
+});
+
+describe('metToKcal / lookupMet', () => {
+  it('computes kcal from a MET value, duration, and weight', () => {
+    expect(metToKcal(6.8, 40, 80)).toBeCloseTo(381, 0);
+  });
+
+  it('returns undefined for an unknown sport/intensity pair', () => {
+    expect(lookupMet('strength', 'moderate')).toBeUndefined();
+  });
+
+  it('looks up the new walking MET table', () => {
+    expect(lookupMet('walking', 'light')).toBe(2.8);
   });
 });

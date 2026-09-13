@@ -4,14 +4,15 @@ import { getWeeklyDefault } from './weeklyScheduleStore.js';
 import { getProfileSnapshot } from './profile.js';
 import type { ToolDefinition } from './claude.js';
 
-export type SportType = 'cycling' | 'running' | 'strength' | 'crossfit' | 'other';
+export type SportType = 'cycling' | 'running' | 'strength' | 'crossfit' | 'walking' | 'other';
 export type Intensity = 'light' | 'moderate' | 'sustained' | 'vigorous' | 'maximal';
 
-const SPORT_DISCOUNTS: Record<SportType, number> = {
+export const SPORT_DISCOUNTS: Record<SportType, number> = {
   cycling: 0.2,
   running: 0.25,
   strength: 0.3,
   crossfit: 0.3,
+  walking: 0.35,
   other: 0.35,
 };
 
@@ -22,7 +23,16 @@ const MET_TABLE: Partial<Record<SportType, Record<Intensity, number>>> = {
   cycling: { light: 4.0, moderate: 6.8, sustained: 8.0, vigorous: 10.0, maximal: 12.0 },
   running: { light: 6.0, moderate: 9.8, sustained: 11.0, vigorous: 12.8, maximal: 16.0 },
   crossfit: { light: 3.5, moderate: 7.0, sustained: 8.0, vigorous: 10.0, maximal: 12.0 },
+  walking: { light: 2.8, moderate: 3.5, sustained: 4.3, vigorous: 5.0, maximal: 6.0 },
 };
+
+export function lookupMet(sportType: SportType, intensity: Intensity): number | undefined {
+  return MET_TABLE[sportType]?.[intensity];
+}
+
+export function metToKcal(met: number, durationMinutes: number, weightKg: number): number {
+  return Math.round(((met * 3.5 * weightKg) / 200) * durationMinutes);
+}
 
 const MATERIALITY_THRESHOLD_KCAL = 100;
 
@@ -51,7 +61,7 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
     properties: {
       date: { type: 'string', description: 'YYYY-MM-DD' },
       description: { type: 'string' },
-      sportType: { type: 'string', enum: ['cycling', 'running', 'strength', 'crossfit', 'other'] },
+      sportType: { type: 'string', enum: ['cycling', 'running', 'strength', 'crossfit', 'walking', 'other'] },
       reportedCalories: { type: 'number', description: "Calories affichées par la montre/tracker, si disponibles." },
       durationMinutes: { type: 'number', description: "Durée de l'activité en minutes, si pas de donnée de montre." },
       intensity: {
@@ -88,11 +98,11 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
     if (profile.weightKg === null) {
       return "Le poids actuel de l'utilisateur n'est pas encore connu, nécessaire pour estimer la dépense calorique à partir de la durée et de l'intensité. Demande-lui son poids avant de continuer.";
     }
-    const met = MET_TABLE[input.sportType]?.[input.intensity as Intensity];
+    const met = lookupMet(input.sportType, input.intensity as Intensity);
     if (met === undefined) {
       return `Aucune table d'estimation calorique n'existe pour le type d'activité "${input.sportType}" — demande à l'utilisateur les calories affichées par sa montre/tracker pour cette activité.`;
     }
-    reportedCalories = Math.round(((met * 3.5 * profile.weightKg) / 200) * (input.durationMinutes as number));
+    reportedCalories = metToKcal(met, input.durationMinutes as number, profile.weightKg);
     estimationMethod = 'met_estimate';
     metUsed = met;
   }
