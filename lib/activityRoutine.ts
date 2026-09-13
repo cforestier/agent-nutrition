@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { getProfileSnapshot } from './profile.js';
-import { lookupMet, metToKcal, SPORT_DISCOUNTS } from './activity.js';
+import { lookupMet, metToKcal, SPORT_DISCOUNTS, recomputeEventBonusForDate } from './activity.js';
 import type { SportType, Intensity } from './activity.js';
 import { WEEKDAYS } from './weeklySchedule.js';
 import type { ToolDefinition } from './claude.js';
@@ -120,4 +120,84 @@ export async function findRoutineByNameOrAlias(nameOrAlias: string) {
   return routines.find(
     (r) => r.name.toLowerCase() === needle || r.aliases.some((a) => a.toLowerCase() === needle)
   );
+}
+
+export const APPLY_ACTIVITY_ROUTINE_TOOL: ToolDefinition = {
+  name: 'apply_activity_routine',
+  description:
+    "Applique une routine d'activité déjà définie à une date donnée. " +
+    "N'indique PAS reportedKcal si l'utilisateur annonce seulement qu'il va faire cette routine (application proactive, avant que ça ait eu lieu) — l'outil utilise alors la moyenne apprise ou l'estimation de départ. " +
+    "Indique reportedKcal si l'utilisateur confirme une occurrence réelle avec un vrai total (ex: sa montre) — ça affine la moyenne de la routine pour la prochaine fois.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      routineName: { type: 'string' },
+      date: { type: 'string', description: 'YYYY-MM-DD' },
+      reportedKcal: { type: 'number' },
+    },
+    required: ['routineName', 'date'],
+  },
+};
+
+export interface ApplyActivityRoutineInput {
+  routineName: string;
+  date: string;
+  reportedKcal?: number;
+}
+
+export async function handleApplyActivityRoutineTool(rawInput: Record<string, unknown>): Promise<string> {
+  const input = rawInput as unknown as ApplyActivityRoutineInput;
+
+  const routine = await findRoutineByNameOrAlias(input.routineName);
+  if (!routine) {
+    return `Aucune routine nommée "${input.routineName}" n'est connue — demande à l'utilisateur de la décrire, puis crée-la avec define_activity_routine avant de réessayer.`;
+  }
+
+  const isReal = input.reportedKcal !== undefined;
+  const effectiveKcal = input.reportedKcal ?? routine.observedAvgKcal ?? routine.estimatedKcal;
+  const bonusKcal = effectiveKcal * (1 - routine.blendedDiscountPct);
+
+  const existingPlanned = await prisma.activityLog.findFirst({
+    where: { date: input.date, routineId: routine.id, status: 'planned' },
+  });
+
+  if (existingPlanned) {
+    await prisma.activityLog.update({
+      where: { id: existingPlanned.id },
+      data: { reportedCalories: effectiveKcal, bonusKcal, status: isReal ? 'done' : 'planned' },
+    });
+  } else {
+    await prisma.activityLog.create({
+      data: {
+        date: input.date,
+        description: routine.name,
+        sportType: routine.primarySportType ?? 'other',
+        reportedCalories: effectiveKcal,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: effectiveKcal,
+        discountPct: routine.blendedDiscountPct,
+        bonusKcal,
+        estimationMethod: isReal ? 'device' : 'met_estimate',
+        routineId: routine.id,
+        status: isReal ? 'done' : 'planned',
+      },
+    });
+  }
+
+  if (isReal) {
+    const newSampleCount = routine.sampleCount + 1;
+    const newAvg =
+      ((routine.observedAvgKcal ?? routine.estimatedKcal) * routine.sampleCount + (input.reportedKcal as number)) /
+      newSampleCount;
+    await prisma.activityRoutine.update({
+      where: { id: routine.id },
+      data: { observedAvgKcal: newAvg, sampleCount: newSampleCount },
+    });
+  }
+
+  await recomputeEventBonusForDate(input.date);
+
+  const note = isReal ? 'confirmée (réelle)' : 'appliquée par anticipation (estimation)';
+  return `Routine "${routine.name}" ${note} pour le ${input.date} : ${bonusKcal.toFixed(0)} kcal de bonus (rabais ${(routine.blendedDiscountPct * 100).toFixed(0)}%).`;
 }

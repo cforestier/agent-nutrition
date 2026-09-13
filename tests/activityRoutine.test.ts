@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
-import { handleDefineActivityRoutineTool } from '../lib/activityRoutine.js';
+import { handleDefineActivityRoutineTool, handleApplyActivityRoutineTool } from '../lib/activityRoutine.js';
 import * as profileLib from '../lib/profile.js';
 
 function baseProfile(weightKg: number | null) {
@@ -85,5 +85,82 @@ describe('handleDefineActivityRoutineTool', () => {
     expect(result).toContain('poids');
     const routine = await prisma.activityRoutine.findFirst({ where: { name: 'routine sans poids' } });
     expect(routine).toBeNull();
+  });
+});
+
+describe('handleApplyActivityRoutineTool', () => {
+  const date1 = '1998-05-10';
+  const date2 = '1998-05-11';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date: { in: [date1, date2] } } });
+    await prisma.dayPlan.deleteMany({ where: { date: { in: [date1, date2] } } });
+    await prisma.activityRoutine.deleteMany({ where: { name: 'routine test apply' } });
+  });
+
+  it('applies the initial estimate proactively when no reportedKcal is given', async () => {
+    await prisma.activityRoutine.create({
+      data: {
+        name: 'routine test apply',
+        aliases: ['rta'],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: [],
+      },
+    });
+
+    const result = await handleApplyActivityRoutineTool({ routineName: 'rta', date: date1 });
+
+    // bonus = 300 * (1-0.2) = 240
+    expect(result).toContain('240');
+    expect(result).toContain('anticipation');
+
+    const log = await prisma.activityLog.findFirst({ where: { date: date1, description: 'routine test apply' } });
+    expect(log?.status).toBe('planned');
+    expect(log?.bonusKcal).toBeCloseTo(240, 5);
+
+    const dayPlan = await prisma.dayPlan.findFirst({ where: { date: date1 } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(240, 5);
+
+    const routine = await prisma.activityRoutine.findFirst({ where: { name: 'routine test apply' } });
+    expect(routine?.sampleCount).toBe(0);
+    expect(routine?.observedAvgKcal).toBeNull();
+  });
+
+  it('replaces the estimated total with a real reported total and updates the running average', async () => {
+    const result = await handleApplyActivityRoutineTool({ routineName: 'rta', date: date1, reportedKcal: 400 });
+
+    // bonus = 400 * (1-0.2) = 320
+    expect(result).toContain('320');
+    expect(result).toContain('réelle');
+
+    const logs = await prisma.activityLog.findMany({ where: { date: date1, description: 'routine test apply' } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].status).toBe('done');
+    expect(logs[0].bonusKcal).toBeCloseTo(320, 5);
+
+    const dayPlan = await prisma.dayPlan.findFirst({ where: { date: date1 } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(320, 5);
+
+    const routine = await prisma.activityRoutine.findFirst({ where: { name: 'routine test apply' } });
+    expect(routine?.sampleCount).toBe(1);
+    expect(routine?.observedAvgKcal).toBeCloseTo(400, 5);
+  });
+
+  it('creates a separate occurrence for a different date and keeps refining the average', async () => {
+    const result = await handleApplyActivityRoutineTool({ routineName: 'rta', date: date2, reportedKcal: 500 });
+
+    expect(result).toContain('réelle');
+
+    // running average: (400*1 + 500) / 2 = 450
+    const routine = await prisma.activityRoutine.findFirst({ where: { name: 'routine test apply' } });
+    expect(routine?.sampleCount).toBe(2);
+    expect(routine?.observedAvgKcal).toBeCloseTo(450, 5);
+  });
+
+  it('tells the LLM to create the routine first when the name is unknown', async () => {
+    const result = await handleApplyActivityRoutineTool({ routineName: 'routine inconnue xyz', date: date1 });
+    expect(result).toContain('Aucune routine');
   });
 });
