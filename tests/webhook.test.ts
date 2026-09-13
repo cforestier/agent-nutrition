@@ -124,7 +124,7 @@ describe('POST /api/telegram/webhook', () => {
     expect(systemPrompt).toContain(SAFETY_GUARDRAILS_PROMPT);
     expect(history).toEqual([]);
     expect(text).toBe('80kg');
-    expect(tools).toEqual([onboardingLib.ONBOARDING_TOOL, FLAG_CONCERN_TOOL]);
+    expect(tools).toEqual([onboardingLib.ONBOARDING_TOOL, DEFINE_ACTIVITY_ROUTINE_TOOL, FLAG_CONCERN_TOOL]);
     expect(sendSpy).toHaveBeenCalledWith(12345, 'Quel est ton poids ?');
   });
 

@@ -97,6 +97,7 @@ async function handleGeneralChatTool(name: string, input: Record<string, unknown
 
 async function handleOnboardingChatTool(name: string, input: Record<string, unknown>): Promise<string> {
   if (name === 'flag_concern') return handleFlagConcernTool(input);
+  if (name === 'define_activity_routine') return handleDefineActivityRoutineTool(input);
   return handleOnboardingTool(input);
 }
 
@@ -118,7 +119,7 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
         ONBOARDING_SYSTEM_PROMPT + `\n\nDate du jour : ${todayIsoDate()}.` + SAFETY_GUARDRAILS_PROMPT,
         history,
         text,
-        [ONBOARDING_TOOL, FLAG_CONCERN_TOOL],
+        [ONBOARDING_TOOL, DEFINE_ACTIVITY_ROUTINE_TOOL, FLAG_CONCERN_TOOL],
         handleOnboardingChatTool
       );
 
