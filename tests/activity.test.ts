@@ -20,7 +20,7 @@ function baseProfile(currentTargetKcal: number | null) {
 }
 
 describe('handleLogActivityTool', () => {
-  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08'];
+  const dates = ['1999-07-05', '1999-07-06', '1999-07-07', '1999-07-08', '1999-07-09', '1999-07-10', '1999-07-11'];
 
   afterAll(async () => {
     await prisma.activityLog.deleteMany({ where: { date: { in: dates } } });
@@ -112,5 +112,69 @@ describe('handleLogActivityTool', () => {
 
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[3] } });
     expect(dayPlan?.eventBonusKcal).toBeCloseTo(-260, 5);
+  });
+
+  it('estimates calories from duration + intensity via the MET table when no device data is given', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500)); // weightKg: 80
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[4],
+      description: 'vélo chez un ami, pas de montre',
+      sportType: 'cycling',
+      durationMinutes: 40,
+      intensity: 'moderate',
+      relationToPlan: 'additional',
+    });
+
+    // met = 6.8; kcal = 6.8 * 3.5 * 80 / 200 * 40 = 380.8 -> rounded 381
+    expect(result).toContain('381');
+    expect(result).toContain('estimées');
+
+    const log = await prisma.activityLog.findFirst({ where: { date: dates[4] } });
+    expect(log?.reportedCalories).toBeCloseTo(381, 5);
+    expect(log?.estimationMethod).toBe('met_estimate');
+    expect(log?.metUsed).toBeCloseTo(6.8, 5);
+    expect(log?.intensity).toBe('moderate');
+    expect(log?.durationMinutes).toBeCloseTo(40, 5);
+  });
+
+  it('rejects a MET estimate when the sport type has no MET table entry', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[5],
+      description: 'séance muscu sans montre',
+      sportType: 'strength',
+      durationMinutes: 45,
+      intensity: 'moderate',
+      relationToPlan: 'additional',
+    });
+
+    expect(result).toContain('Aucune table');
+    const log = await prisma.activityLog.findFirst({ where: { date: dates[5] } });
+    expect(log).toBeNull();
+  });
+
+  it('asks for the missing weight before estimating from duration + intensity', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500) as any).mockResolvedValueOnce({
+      ...baseProfile(2500),
+      weightKg: null,
+    });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[6],
+      description: 'crossfit chez un ami',
+      sportType: 'crossfit',
+      durationMinutes: 30,
+      intensity: 'vigorous',
+      relationToPlan: 'additional',
+    });
+
+    expect(result).toContain('poids');
+    const log = await prisma.activityLog.findFirst({ where: { date: dates[6] } });
+    expect(log).toBeNull();
   });
 });

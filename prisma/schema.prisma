@@ -76,6 +76,10 @@ model ActivityLog {
   rawDiffKcal      Float
   discountPct      Float
   bonusKcal        Float
+  intensity        String?
+  durationMinutes  Float?
+  estimationMethod String?
+  metUsed          Float?
   createdAt        DateTime @default(now())
 }
 

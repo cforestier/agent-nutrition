@@ -4,13 +4,24 @@ import { getWeeklyDefault } from './weeklyScheduleStore.js';
 import { getProfileSnapshot } from './profile.js';
 import type { ToolDefinition } from './claude.js';
 
-export type SportType = 'cycling' | 'running' | 'strength' | 'other';
+export type SportType = 'cycling' | 'running' | 'strength' | 'crossfit' | 'other';
+export type Intensity = 'light' | 'moderate' | 'sustained' | 'vigorous' | 'maximal';
 
 const SPORT_DISCOUNTS: Record<SportType, number> = {
   cycling: 0.2,
   running: 0.25,
   strength: 0.3,
+  crossfit: 0.3,
   other: 0.35,
+};
+
+// MET (Metabolic Equivalent of Task) values per activity x intensity, used to estimate
+// calorie expenditure from duration when no device measurement is available. Only sports
+// with a documented reference are covered; strength/other still require reportedCalories.
+const MET_TABLE: Partial<Record<SportType, Record<Intensity, number>>> = {
+  cycling: { light: 4.0, moderate: 6.8, sustained: 8.0, vigorous: 10.0, maximal: 12.0 },
+  running: { light: 6.0, moderate: 9.8, sustained: 11.0, vigorous: 12.8, maximal: 16.0 },
+  crossfit: { light: 3.5, moderate: 7.0, sustained: 8.0, vigorous: 10.0, maximal: 12.0 },
 };
 
 const MATERIALITY_THRESHOLD_KCAL = 100;
@@ -19,14 +30,20 @@ export interface LogActivityInput {
   date: string;
   description: string;
   sportType: SportType;
-  reportedCalories: number;
+  reportedCalories?: number;
+  durationMinutes?: number;
+  intensity?: Intensity;
   relationToPlan: 'replaces' | 'additional';
 }
 
 export const LOG_ACTIVITY_TOOL: ToolDefinition = {
   name: 'log_activity',
   description:
-    "Enregistre une activité physique rapportée par l'utilisateur avec les calories affichées par sa montre/tracker. " +
+    "Enregistre une activité physique rapportée par l'utilisateur. Deux façons de fournir la dépense calorique : " +
+    "(1) reportedCalories si l'utilisateur a une valeur de sa montre/tracker — à privilégier quand elle est disponible ; " +
+    "(2) durationMinutes + intensity sinon, pour estimer la dépense via une table MET (uniquement disponible pour cycling/running/crossfit). " +
+    "Si l'utilisateur décrit une activité sans donnée de montre, demande-lui explicitement la durée ET l'intensité ressentie " +
+    "(light = léger, moderate = modéré, sustained = soutenu, vigorous = vigoureux, maximal = maximal) avant d'appeler cet outil — ne devine jamais l'intensité. " +
     "Si l'utilisateur ne précise pas si cette activité REMPLACE l'activité initialement prévue pour la journée ou si elle est EN PLUS, " +
     "demande-le lui explicitement avant d'appeler cet outil — ne suppose jamais.",
   input_schema: {
@@ -34,21 +51,56 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
     properties: {
       date: { type: 'string', description: 'YYYY-MM-DD' },
       description: { type: 'string' },
-      sportType: { type: 'string', enum: ['cycling', 'running', 'strength', 'other'] },
-      reportedCalories: { type: 'number' },
+      sportType: { type: 'string', enum: ['cycling', 'running', 'strength', 'crossfit', 'other'] },
+      reportedCalories: { type: 'number', description: "Calories affichées par la montre/tracker, si disponibles." },
+      durationMinutes: { type: 'number', description: "Durée de l'activité en minutes, si pas de donnée de montre." },
+      intensity: {
+        type: 'string',
+        enum: ['light', 'moderate', 'sustained', 'vigorous', 'maximal'],
+        description: "Intensité ressentie, si pas de donnée de montre.",
+      },
       relationToPlan: { type: 'string', enum: ['replaces', 'additional'] },
     },
-    required: ['date', 'description', 'sportType', 'reportedCalories', 'relationToPlan'],
+    required: ['date', 'description', 'sportType', 'relationToPlan'],
   },
 };
 
 export async function handleLogActivityTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as LogActivityInput;
 
+  const hasDeviceCalories = input.reportedCalories !== undefined;
+  const hasDurationAndIntensity = input.durationMinutes !== undefined && input.intensity !== undefined;
+
+  if (!hasDeviceCalories && !hasDurationAndIntensity) {
+    return "Il manque soit les calories affichées par la montre, soit la durée ET l'intensité de l'activité pour estimer la dépense — demande l'info manquante à l'utilisateur avant de rappeler cet outil.";
+  }
+
+  const profile = await getProfileSnapshot();
+
+  let reportedCalories: number;
+  let estimationMethod: 'device' | 'met_estimate';
+  let metUsed: number | null = null;
+
+  if (hasDeviceCalories) {
+    reportedCalories = input.reportedCalories as number;
+    estimationMethod = 'device';
+  } else {
+    if (profile.weightKg === null) {
+      return "Le poids actuel de l'utilisateur n'est pas encore connu, nécessaire pour estimer la dépense calorique à partir de la durée et de l'intensité. Demande-lui son poids avant de continuer.";
+    }
+    const met = MET_TABLE[input.sportType]?.[input.intensity as Intensity];
+    if (met === undefined) {
+      return `Aucune table d'estimation calorique n'existe pour le type d'activité "${input.sportType}" — demande à l'utilisateur les calories affichées par sa montre/tracker pour cette activité.`;
+    }
+    reportedCalories = Math.round(((met * 3.5 * profile.weightKg) / 200) * (input.durationMinutes as number));
+    estimationMethod = 'met_estimate';
+    metUsed = met;
+  }
+
   const weeklyDefault = await getWeeklyDefault(weekdayOf(input.date));
   const baselineKcal = weeklyDefault?.avgKcal ?? 0;
 
-  const rawDiffKcal = input.relationToPlan === 'replaces' ? input.reportedCalories - baselineKcal : input.reportedCalories;
+  const rawDiffKcal = input.relationToPlan === 'replaces' ? reportedCalories - baselineKcal : reportedCalories;
 
   const discountPct = SPORT_DISCOUNTS[input.sportType];
   const adjustedDiffKcal = rawDiffKcal * (1 - discountPct);
@@ -59,17 +111,23 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
       date: input.date,
       description: input.description,
       sportType: input.sportType,
-      reportedCalories: input.reportedCalories,
+      reportedCalories,
       relationToPlan: input.relationToPlan,
       baselineKcal,
       rawDiffKcal,
       discountPct,
       bonusKcal,
+      intensity: input.intensity,
+      durationMinutes: input.durationMinutes,
+      estimationMethod,
+      metUsed: metUsed ?? undefined,
     },
   });
 
+  const calorieNote = estimationMethod === 'met_estimate' ? `${reportedCalories} kcal estimées` : `${reportedCalories} kcal`;
+
   if (bonusKcal === 0) {
-    return `Activité enregistrée (${input.description}, ${input.reportedCalories} kcal). Écart avec le prévu trop faible (moins de ${MATERIALITY_THRESHOLD_KCAL} kcal après rabais) pour ajuster ta cible — considérée comme normale.`;
+    return `Activité enregistrée (${input.description}, ${calorieNote}). Écart avec le prévu trop faible (moins de ${MATERIALITY_THRESHOLD_KCAL} kcal après rabais) pour ajuster ta cible — considérée comme normale.`;
   }
 
   await prisma.dayPlan.upsert({
@@ -84,10 +142,9 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
     update: { isAtypical: true, eventBonusKcal: bonusKcal },
   });
 
-  const profile = await getProfileSnapshot();
   const sign = bonusKcal > 0 ? '+' : '';
   const newTargetNote =
     profile.currentTargetKcal !== null ? ` → ${(profile.currentTargetKcal + bonusKcal).toFixed(0)} kcal aujourd'hui` : '';
 
-  return `Activité enregistrée (${input.description}, ${input.reportedCalories} kcal, rabais ${(discountPct * 100).toFixed(0)}%). Cible du jour ajustée de ${sign}${bonusKcal.toFixed(0)} kcal${newTargetNote}.`;
+  return `Activité enregistrée (${input.description}, ${calorieNote}, rabais ${(discountPct * 100).toFixed(0)}%). Cible du jour ajustée de ${sign}${bonusKcal.toFixed(0)} kcal${newTargetNote}.`;
 }
