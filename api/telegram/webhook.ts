@@ -59,6 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 const HISTORY_MESSAGE_LIMIT = 16;
+const ONBOARDING_HISTORY_MESSAGE_LIMIT = 40;
 
 const GENERAL_CHAT_TOOLS = [
   ...SCENARIO_TOOLS,
@@ -90,8 +91,8 @@ async function handleOnboardingChatTool(name: string, input: Record<string, unkn
 }
 
 async function handleMessage(chatId: number, text: string): Promise<void> {
-  const history = await recentMessages(HISTORY_MESSAGE_LIMIT);
   const onboardingDone = await isOnboardingBasicsComplete();
+  const history = await recentMessages(onboardingDone ? HISTORY_MESSAGE_LIMIT : ONBOARDING_HISTORY_MESSAGE_LIMIT);
 
   const result = onboardingDone
     ? await converseWithTool(
