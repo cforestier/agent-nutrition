@@ -27,6 +27,7 @@ import {
   APPLY_ACTIVITY_ROUTINE_TOOL,
   handleDefineActivityRoutineTool,
   handleApplyActivityRoutineTool,
+  cancelPlannedActivity,
 } from '../../lib/activityRoutine.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT, handleFlagConcernTool } from '../../lib/safety.js';
 
@@ -161,6 +162,18 @@ async function handleCallbackQuery(cq: { callbackQueryId: string; chatId: number
       await saveSleepQuality(todayIsoDate(), quality as SleepQuality);
       await sendMessage(cq.chatId, `Nuit notée : ${quality}.`);
     }
+    return;
+  }
+
+  if (cq.data.startsWith('routine:confirm:')) {
+    await sendMessage(cq.chatId, 'Ok, noté.');
+    return;
+  }
+
+  if (cq.data.startsWith('routine:cancel:')) {
+    const activityLogId = cq.data.slice('routine:cancel:'.length);
+    await cancelPlannedActivity(activityLogId);
+    await sendMessage(cq.chatId, "Ok, annulé pour aujourd'hui.");
   }
 }
 

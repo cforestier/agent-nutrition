@@ -15,6 +15,7 @@ import { LOG_ACTIVITY_TOOL } from '../lib/activity.js';
 import { DEFINE_ACTIVITY_ROUTINE_TOOL, APPLY_ACTIVITY_ROUTINE_TOOL } from '../lib/activityRoutine.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT } from '../lib/safety.js';
 import * as sleepLib from '../lib/sleep.js';
+import * as activityRoutineLib from '../lib/activityRoutine.js';
 
 const backgroundTasks: Promise<unknown>[] = [];
 
@@ -236,5 +237,39 @@ describe('POST /api/telegram/webhook', () => {
     expect(res.statusCode).toBe(200);
     expect(answerSpy).not.toHaveBeenCalled();
     expect(saveSpy).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges a routine confirmation callback without changing anything', async () => {
+    const answerSpy = vi.spyOn(telegram, 'answerCallbackQuery').mockResolvedValue();
+    const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const cancelSpy = vi.spyOn(activityRoutineLib, 'cancelPlannedActivity');
+    const res = mockRes();
+    const body = {
+      callback_query: { id: 'cq2', data: 'routine:confirm:abc123', message: { chat: { id: 12345 } } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(answerSpy).toHaveBeenCalledWith('cq2');
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.any(String));
+  });
+
+  it('cancels a planned routine activity when "Pas aujourd\'hui" is tapped', async () => {
+    const answerSpy = vi.spyOn(telegram, 'answerCallbackQuery').mockResolvedValue();
+    const sendSpy = vi.spyOn(telegram, 'sendMessage').mockResolvedValue();
+    const cancelSpy = vi.spyOn(activityRoutineLib, 'cancelPlannedActivity').mockResolvedValue(true);
+    const res = mockRes();
+    const body = {
+      callback_query: { id: 'cq3', data: 'routine:cancel:abc123', message: { chat: { id: 12345 } } },
+    };
+
+    await handler({ method: 'POST', body } as any, res as any);
+    await flushBackgroundTasks();
+
+    expect(answerSpy).toHaveBeenCalledWith('cq3');
+    expect(cancelSpy).toHaveBeenCalledWith('abc123');
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('annulé'));
   });
 });
