@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
 import { runDailyRecompute } from '../lib/dailyRecompute.js';
+import { recomputeEventBonusForDate } from '../lib/activity.js';
 import * as profileLib from '../lib/profile.js';
 import * as weeklyScheduleStoreLib from '../lib/weeklyScheduleStore.js';
 import * as sleepLib from '../lib/sleep.js';
@@ -289,5 +290,108 @@ describe('runDailyRecompute', () => {
     await Promise.all(bonusWeightDates.map((d) => prisma.weight.deleteMany({ where: { date: d } })));
     await prisma.dayPlan.deleteMany({ where: { date: bonusDate } });
     await prisma.dailyState.deleteMany({ where: { date: bonusDate } });
+  });
+});
+
+// Regression guard for the whole-branch finding C2: an activity bonus must never flag a day
+// atypical, otherwise every recurring-routine weekday would silently drop out of the 14-day
+// intake average that drives the observed-TDEE adaptation loop.
+describe('runDailyRecompute with an activity-bonus day in the window', () => {
+  const today = '1999-11-15';
+  const activityDate = '1999-11-10';
+  const mealDates = ['1999-11-03', activityDate, today];
+  const mealIds: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(mealIds.map((id) => prisma.meal.delete({ where: { id } })));
+    await prisma.activityLog.deleteMany({ where: { date: activityDate } });
+    await prisma.dayPlan.deleteMany({ where: { date: { in: mealDates } } });
+    await prisma.dailyState.deleteMany({ where: { date: today } });
+    await prisma.tdeeComparison.deleteMany({ where: { date: today } });
+  });
+
+  it('keeps a day carrying an activity bonus inside the 14-day rolling average', async () => {
+    const meals = await Promise.all([
+      prisma.meal.create({
+        data: {
+          datetime: new Date('1999-11-03T12:00:00Z'),
+          inputType: 'text',
+          rawDescription: 'routine-window fixture day 1',
+          items: [{ name: 'test-item', estimatedGrams: 100, kcal: 2200, proteinG: 150, carbsG: 200, fatG: 70 }],
+          kcalLow: 2200,
+          kcalMid: 2200,
+          kcalHigh: 2200,
+          confidence: 'high',
+        },
+      }),
+      prisma.meal.create({
+        data: {
+          datetime: new Date('1999-11-10T12:00:00Z'),
+          inputType: 'text',
+          rawDescription: 'routine-window fixture day 2 (commute routine day)',
+          items: [{ name: 'test-item', estimatedGrams: 100, kcal: 2400, proteinG: 160, carbsG: 220, fatG: 75 }],
+          kcalLow: 2400,
+          kcalMid: 2400,
+          kcalHigh: 2400,
+          confidence: 'high',
+        },
+      }),
+      prisma.meal.create({
+        data: {
+          datetime: new Date('1999-11-15T12:00:00Z'),
+          inputType: 'text',
+          rawDescription: 'routine-window fixture day 3 (today)',
+          items: [{ name: 'test-item', estimatedGrams: 100, kcal: 800, proteinG: 50, carbsG: 90, fatG: 20 }],
+          kcalLow: 800,
+          kcalMid: 800,
+          kcalHigh: 800,
+          confidence: 'high',
+        },
+      }),
+    ]);
+    mealIds.push(...meals.map((m) => m.id));
+
+    // A routine auto-applied that morning: non-zero bonus, zero user action.
+    await prisma.activityLog.create({
+      data: {
+        date: activityDate,
+        description: 'aller au bureau',
+        sportType: 'cycling',
+        reportedCalories: 300,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: 300,
+        discountPct: 0.2,
+        bonusKcal: 240,
+        status: 'planned',
+      },
+    });
+    await recomputeEventBonusForDate(activityDate);
+
+    const activityDayPlan = await prisma.dayPlan.findUnique({ where: { date: activityDate } });
+    expect(activityDayPlan?.eventBonusKcal).toBeCloseTo(240, 5);
+    expect(activityDayPlan?.isAtypical).toBe(false);
+
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue({
+      weightKg: 80,
+      ratePctPerWeek: 0.5,
+      currentTargetKcal: 2500,
+      leanMassKg: 65,
+      kcalFloor: 1950,
+      baselineStartedAt: null,
+      lastAdjustmentDate: '1999-05-01',
+      consecutiveDeficitWeeks: 0,
+      weighInDay: null,
+      reviewDay: null,
+    });
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue({ avgKcal: 400, activityType: 'course facile' });
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
+    vi.spyOn(profileLib, 'applyRecomputeToProfile').mockResolvedValue();
+
+    const result = await runDailyRecompute(today);
+
+    // avg(2200, 2400, 800) — the bonus day is still in there. If it were flagged atypical the
+    // average would be avg(2200, 800) = 1500.
+    expect(result.rolling14Kcal).toBeCloseTo(1800, 5);
   });
 });

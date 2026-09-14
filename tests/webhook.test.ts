@@ -67,6 +67,7 @@ describe('POST /api/telegram/webhook', () => {
     vi.spyOn(profileLib, 'isOnboardingBasicsComplete').mockResolvedValue(true);
     vi.spyOn(scenariosLib, 'buildScenarioSystemPrompt').mockResolvedValue('full system prompt');
     vi.spyOn(weeklyScheduleStoreLib, 'weeklyScheduleSystemPromptAddition').mockResolvedValue('');
+    vi.spyOn(activityRoutineLib, 'buildRoutineSystemPromptAddition').mockResolvedValue('\n\nROUTINES CONNUES');
     vi.spyOn(messagesLib, 'recentMessages').mockResolvedValue([]);
     const converseWithToolSpy = vi
       .spyOn(claudeLib, 'converseWithTool')
@@ -81,7 +82,7 @@ describe('POST /api/telegram/webhook', () => {
 
     expect(res.statusCode).toBe(200);
     expect(converseWithToolSpy).toHaveBeenCalledWith(
-      'full system prompt' + SAFETY_GUARDRAILS_PROMPT,
+      'full system prompt' + '\n\nROUTINES CONNUES' + SAFETY_GUARDRAILS_PROMPT,
       [],
       'salut',
       [

@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
-import { handleDefineActivityRoutineTool, handleApplyActivityRoutineTool } from '../lib/activityRoutine.js';
+import {
+  handleDefineActivityRoutineTool,
+  handleApplyActivityRoutineTool,
+  autoApplyRoutineForToday,
+  cancelPlannedActivity,
+  getDueRoutinesToday,
+  buildRoutineSystemPromptAddition,
+} from '../lib/activityRoutine.js';
+import { weekdayOf } from '../lib/dateUtils.js';
 import * as profileLib from '../lib/profile.js';
 
 function baseProfile(weightKg: number | null) {
@@ -162,5 +170,166 @@ describe('handleApplyActivityRoutineTool', () => {
   it('tells the LLM to create the routine first when the name is unknown', async () => {
     const result = await handleApplyActivityRoutineTool({ routineName: 'routine inconnue xyz', date: date1 });
     expect(result).toContain('Aucune routine');
+  });
+});
+
+describe('handleDefineActivityRoutineTool — reachable error paths', () => {
+  const duplicateName = 'routine doublon test';
+  const emptyLegsName = 'routine legs vides';
+
+  afterAll(async () => {
+    await prisma.activityRoutine.deleteMany({ where: { name: { in: [duplicateName, emptyLegsName] } } });
+  });
+
+  it('returns a friendly message instead of letting Prisma throw on a duplicate name', async () => {
+    await prisma.activityRoutine.create({
+      data: {
+        name: duplicateName,
+        aliases: [],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: [],
+      },
+    });
+
+    const result = await handleDefineActivityRoutineTool({
+      name: duplicateName,
+      aliases: [],
+      estimatedKcal: 400,
+      primarySportType: 'running',
+    });
+
+    expect(result).toContain('existe déjà');
+
+    const routines = await prisma.activityRoutine.findMany({ where: { name: duplicateName } });
+    expect(routines).toHaveLength(1);
+    expect(routines[0].estimatedKcal).toBe(300); // untouched
+  });
+
+  it('treats an empty legs array as missing input instead of throwing', async () => {
+    const result = await handleDefineActivityRoutineTool({ name: emptyLegsName, aliases: [], legs: [] });
+
+    expect(result).toContain('manque');
+
+    const routine = await prisma.activityRoutine.findFirst({ where: { name: emptyLegsName } });
+    expect(routine).toBeNull();
+  });
+});
+
+describe('handleApplyActivityRoutineTool — correcting an already-confirmed occurrence', () => {
+  const date = '1998-06-02';
+  const routineName = 'routine test correction';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date } });
+    await prisma.dayPlan.deleteMany({ where: { date } });
+    await prisma.activityRoutine.deleteMany({ where: { name: routineName } });
+  });
+
+  it('replaces the sample in place instead of creating a second done row', async () => {
+    await prisma.activityRoutine.create({
+      data: {
+        name: routineName,
+        aliases: ['rtc'],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: [],
+      },
+    });
+
+    await handleApplyActivityRoutineTool({ routineName: 'rtc', date }); // proactive -> planned
+    await handleApplyActivityRoutineTool({ routineName: 'rtc', date, reportedKcal: 450 }); // confirmed -> done
+
+    const afterConfirm = await prisma.activityRoutine.findFirst({ where: { name: routineName } });
+    expect(afterConfirm?.sampleCount).toBe(1);
+    expect(afterConfirm?.observedAvgKcal).toBeCloseTo(450, 5);
+
+    // "en fait 500, pas 450"
+    await handleApplyActivityRoutineTool({ routineName: 'rtc', date, reportedKcal: 500 });
+
+    const logs = await prisma.activityLog.findMany({ where: { date } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0].status).toBe('done');
+    expect(logs[0].reportedCalories).toBeCloseTo(500, 5);
+
+    const afterCorrection = await prisma.activityRoutine.findFirst({ where: { name: routineName } });
+    expect(afterCorrection?.sampleCount).toBe(1); // NOT incremented a second time
+    expect(afterCorrection?.observedAvgKcal).toBeCloseTo(500, 5); // replaced, not averaged in twice
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(400, 5); // 500 * (1 - 0.2), not double-counted
+  });
+});
+
+describe('cancelPlannedActivity', () => {
+  const date = '1998-06-01';
+  const routineName = 'routine test cancel';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date } });
+    await prisma.dayPlan.deleteMany({ where: { date } });
+    await prisma.activityRoutine.deleteMany({ where: { name: routineName } });
+  });
+
+  it('marks the row cancelled, zeroes the bonus, and keeps the routine off the due list', async () => {
+    const routine = await prisma.activityRoutine.create({
+      data: {
+        name: routineName,
+        aliases: [],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: [weekdayOf(date)],
+      },
+    });
+
+    const { activityLogId } = await autoApplyRoutineForToday(routine, date);
+
+    const dayPlanBefore = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlanBefore?.eventBonusKcal).toBeCloseTo(240, 5); // 300 * (1 - 0.2)
+
+    const cancelled = await cancelPlannedActivity(activityLogId);
+    expect(cancelled).toBe(true);
+
+    const log = await prisma.activityLog.findUnique({ where: { id: activityLogId } });
+    expect(log).not.toBeNull(); // kept as an explicit record of the user's decision
+    expect(log?.status).toBe('cancelled');
+
+    const dayPlanAfter = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlanAfter?.eventBonusKcal).toBe(0);
+
+    // The next 15-minute tick must not see this routine as due again.
+    const due = await getDueRoutinesToday(weekdayOf(date), date);
+    expect(due.map((r) => r.id)).not.toContain(routine.id);
+  });
+});
+
+describe('buildRoutineSystemPromptAddition', () => {
+  const routineName = 'routine prompt test';
+
+  afterAll(async () => {
+    await prisma.activityRoutine.deleteMany({ where: { name: routineName } });
+  });
+
+  it('lists every known routine with its aliases and recurring weekdays', async () => {
+    await prisma.activityRoutine.create({
+      data: {
+        name: routineName,
+        aliases: ['rpt'],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: ['monday'],
+      },
+    });
+
+    const addition = await buildRoutineSystemPromptAddition();
+
+    expect(addition).toContain(routineName);
+    expect(addition).toContain('rpt');
+    expect(addition).toContain('monday');
+    expect(addition).toContain('apply_activity_routine');
   });
 });

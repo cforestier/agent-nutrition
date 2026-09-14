@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as profileLib from '../lib/profile.js';
-import { resolveOnboardingDecision, handleOnboardingTool } from '../lib/onboarding.js';
+import { resolveOnboardingDecision, handleOnboardingTool, ONBOARDING_SYSTEM_PROMPT } from '../lib/onboarding.js';
 import type { OnboardingInput } from '../lib/onboarding.js';
 
 const baseInput: OnboardingInput = {
@@ -80,5 +80,26 @@ describe('handleOnboardingTool', () => {
 
     expect(saveSpy).not.toHaveBeenCalled();
     expect(result).not.toMatch(/\d/);
+  });
+});
+
+describe('ONBOARDING_SYSTEM_PROMPT', () => {
+  it('asks about activity routines only after the profile has been recorded', () => {
+    // define_activity_routine needs the weight from the DB (MET path), and only
+    // record_onboarding_profile creates the Profile row — so the routine question must come after it.
+    const recordIndex = ONBOARDING_SYSTEM_PROMPT.indexOf('record_onboarding_profile');
+    const routineIndex = ONBOARDING_SYSTEM_PROMPT.indexOf('define_activity_routine');
+
+    expect(recordIndex).toBeGreaterThan(-1);
+    expect(routineIndex).toBeGreaterThan(-1);
+    expect(routineIndex).toBeGreaterThan(recordIndex);
+  });
+
+  it('still asks for an explicit confirmation before calling the tool', () => {
+    const recapIndex = ONBOARDING_SYSTEM_PROMPT.indexOf("c'est bon pour toi, j'enregistre ?");
+    const recordIndex = ONBOARDING_SYSTEM_PROMPT.indexOf('record_onboarding_profile UNE SEULE FOIS');
+
+    expect(recapIndex).toBeGreaterThan(-1);
+    expect(recordIndex).toBeGreaterThan(recapIndex);
   });
 });

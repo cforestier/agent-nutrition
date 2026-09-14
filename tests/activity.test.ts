@@ -49,7 +49,9 @@ describe('handleLogActivityTool', () => {
     expect(log?.bonusKcal).toBeCloseTo(320, 5);
 
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[0] } });
-    expect(dayPlan?.isAtypical).toBe(true);
+    // `isAtypical` is owned by apply_day_plan, never derived from an activity bonus: the row is
+    // freshly created here by the upsert, so it keeps the schema default.
+    expect(dayPlan?.isAtypical).toBe(false);
     expect(dayPlan?.eventBonusKcal).toBeCloseTo(320, 5);
   });
 
@@ -295,6 +297,68 @@ describe('recomputeEventBonusForDate', () => {
 
     const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
     expect(dayPlan?.eventBonusKcal).toBe(200);
-    expect(dayPlan?.isAtypical).toBe(true);
+    // Summing a non-zero bonus must NOT flag the day atypical — that field stays untouched
+    // (schema default on this freshly-upserted row) so the day still feeds the 14-day average.
+    expect(dayPlan?.isAtypical).toBe(false);
+  });
+
+  it('leaves an existing apply_day_plan-owned isAtypical flag untouched', async () => {
+    await prisma.dayPlan.update({ where: { date }, data: { isAtypical: true } });
+
+    await prisma.activityLog.create({
+      data: { date, description: 'petite marche', sportType: 'walking', reportedCalories: 50, relationToPlan: 'additional', baselineKcal: 0, rawDiffKcal: 50, discountPct: 0, bonusKcal: 0 },
+    });
+    await recomputeEventBonusForDate(date);
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.isAtypical).toBe(true); // not silently cleared by a sub-threshold activity
+    expect(dayPlan?.eventBonusKcal).toBe(200);
+  });
+
+  it('excludes cancelled rows from the summed bonus', async () => {
+    const log = await prisma.activityLog.findFirst({ where: { date, bonusKcal: 150 } });
+    await prisma.activityLog.update({ where: { id: log!.id }, data: { status: 'cancelled' } });
+
+    await recomputeEventBonusForDate(date);
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBe(50);
+  });
+});
+
+describe('recomputeEventBonusForDate with legacy rows', () => {
+  const date = '1997-03-03';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date } });
+    await prisma.dayPlan.deleteMany({ where: { date } });
+  });
+
+  // A document written before the `status` field existed physically lacks it in MongoDB. Prisma
+  // applies the schema default (`done`) on read, but a `where: { status: ... }` clause is pushed
+  // down to Mongo and would silently drop such a row from the bonus sum.
+  it('still counts a document that physically lacks the status field', async () => {
+    await prisma.$runCommandRaw({
+      insert: 'ActivityLog',
+      documents: [
+        {
+          date,
+          description: 'legacy row without status',
+          sportType: 'cycling',
+          reportedCalories: 300,
+          relationToPlan: 'additional',
+          baselineKcal: 0,
+          rawDiffKcal: 300,
+          discountPct: 0.2,
+          bonusKcal: 240,
+          createdAt: { $date: '1997-03-03T10:00:00Z' },
+        },
+      ],
+    });
+
+    await recomputeEventBonusForDate(date);
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(240, 5);
   });
 });

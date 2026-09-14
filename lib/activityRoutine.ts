@@ -65,8 +65,13 @@ export interface DefineActivityRoutineInput {
 export async function handleDefineActivityRoutineTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as DefineActivityRoutineInput;
 
-  if (!input.legs && (input.estimatedKcal === undefined || !input.primarySportType)) {
+  if (!input.legs?.length && (input.estimatedKcal === undefined || !input.primarySportType)) {
     return "Il manque soit le détail des étapes (legs), soit un total kcal connu + le sport principal — demande l'info manquante à l'utilisateur.";
+  }
+
+  const existingRoutine = await prisma.activityRoutine.findUnique({ where: { name: input.name } });
+  if (existingRoutine) {
+    return `Une routine nommée "${input.name}" existe déjà — utilise apply_activity_routine si tu veux l'appliquer, ou choisis un autre nom.`;
   }
 
   let estimatedKcal: number;
@@ -114,6 +119,20 @@ export async function handleDefineActivityRoutineTool(rawInput: Record<string, u
   return `Routine "${input.name}" créée : estimation initiale ${estimatedKcal.toFixed(0)} kcal (rabais ${(blendedDiscountPct * 100).toFixed(0)}%).`;
 }
 
+// Mirrors `buildScenarioSystemPrompt`: without this the model has no way to know which routines
+// exist, and `apply_activity_routine` needs an exact name/alias match.
+export async function buildRoutineSystemPromptAddition(): Promise<string> {
+  const routines = await prisma.activityRoutine.findMany();
+  if (routines.length === 0) return '';
+  const list = routines
+    .map((r) => {
+      const days = r.recurringWeekdays.length ? ` (récurrente : ${r.recurringWeekdays.join(', ')})` : '';
+      return `- ${r.name} (alias : ${r.aliases.join(', ') || 'aucun'})${days}`;
+    })
+    .join('\n');
+  return `\n\nRoutines d'activité connues :\n${list}\n\nUtilise apply_activity_routine avec le nom exact ci-dessus quand l'utilisateur mentionne l'une de ces routines.`;
+}
+
 export async function findRoutineByNameOrAlias(nameOrAlias: string) {
   const needle = nameOrAlias.trim().toLowerCase();
   const routines = await prisma.activityRoutine.findMany();
@@ -157,14 +176,20 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
   const effectiveKcal = input.reportedKcal ?? routine.observedAvgKcal ?? routine.estimatedKcal;
   const bonusKcal = effectiveKcal * (1 - routine.blendedDiscountPct);
 
-  const existingPlanned = await prisma.activityLog.findFirst({
-    where: { date: input.date, routineId: routine.id, status: 'planned' },
+  // Matched regardless of status: a user correcting a total they already confirmed
+  // ("en fait 500, pas 450") must update the same row, not create a second `done` one.
+  const existing = await prisma.activityLog.findFirst({
+    where: { date: input.date, routineId: routine.id },
   });
+  const wasAlreadyDone = existing?.status === 'done';
+  const previousReportedKcal = existing?.reportedCalories;
 
-  if (existingPlanned) {
+  if (existing) {
+    // Re-applying after a cancellation revives the occurrence rather than leaving it cancelled.
+    const nextStatus = isReal ? 'done' : existing.status === 'cancelled' ? 'planned' : existing.status;
     await prisma.activityLog.update({
-      where: { id: existingPlanned.id },
-      data: { reportedCalories: effectiveKcal, bonusKcal, status: isReal ? 'done' : 'planned' },
+      where: { id: existing.id },
+      data: { reportedCalories: effectiveKcal, bonusKcal, status: nextStatus },
     });
   } else {
     await prisma.activityLog.create({
@@ -186,14 +211,23 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
   }
 
   if (isReal) {
-    const newSampleCount = routine.sampleCount + 1;
-    const newAvg =
-      ((routine.observedAvgKcal ?? routine.estimatedKcal) * routine.sampleCount + (input.reportedKcal as number)) /
-      newSampleCount;
-    await prisma.activityRoutine.update({
-      where: { id: routine.id },
-      data: { observedAvgKcal: newAvg, sampleCount: newSampleCount },
-    });
+    if (wasAlreadyDone && previousReportedKcal !== undefined) {
+      // Correction of an occurrence already folded into the average: replace that sample's
+      // contribution instead of adding a new one, so the same occurrence isn't absorbed twice.
+      const sampleCount = Math.max(routine.sampleCount, 1);
+      const sumBefore = (routine.observedAvgKcal ?? routine.estimatedKcal) * sampleCount;
+      const newAvg = (sumBefore - previousReportedKcal + (input.reportedKcal as number)) / sampleCount;
+      await prisma.activityRoutine.update({ where: { id: routine.id }, data: { observedAvgKcal: newAvg } });
+    } else {
+      const newSampleCount = routine.sampleCount + 1;
+      const newAvg =
+        ((routine.observedAvgKcal ?? routine.estimatedKcal) * routine.sampleCount + (input.reportedKcal as number)) /
+        newSampleCount;
+      await prisma.activityRoutine.update({
+        where: { id: routine.id },
+        data: { observedAvgKcal: newAvg, sampleCount: newSampleCount },
+      });
+    }
   }
 
   await recomputeEventBonusForDate(input.date);
@@ -247,7 +281,10 @@ export async function autoApplyRoutineForToday(
 export async function cancelPlannedActivity(activityLogId: string): Promise<boolean> {
   const log = await prisma.activityLog.findUnique({ where: { id: activityLogId } });
   if (!log) return false;
-  await prisma.activityLog.delete({ where: { id: activityLogId } });
+  // Marked cancelled rather than deleted: `getDueRoutinesToday` treats any existing row for
+  // (date, routineId) as "already handled today", so deleting it would make the next
+  // 15-minute tick re-apply the routine and undo the user's "Pas aujourd'hui" tap.
+  await prisma.activityLog.update({ where: { id: activityLogId }, data: { status: 'cancelled' } });
   await recomputeEventBonusForDate(log.date);
   return true;
 }

@@ -27,6 +27,7 @@ import {
   APPLY_ACTIVITY_ROUTINE_TOOL,
   handleDefineActivityRoutineTool,
   handleApplyActivityRoutineTool,
+  buildRoutineSystemPromptAddition,
   cancelPlannedActivity,
 } from '../../lib/activityRoutine.js';
 import { FLAG_CONCERN_TOOL, SAFETY_GUARDRAILS_PROMPT, handleFlagConcernTool } from '../../lib/safety.js';
@@ -110,6 +111,7 @@ async function handleMessage(chatId: number, text: string): Promise<void> {
     ? await converseWithTool(
         (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
           (await weeklyScheduleSystemPromptAddition()) +
+          (await buildRoutineSystemPromptAddition()) +
           SAFETY_GUARDRAILS_PROMPT,
         history,
         text,
