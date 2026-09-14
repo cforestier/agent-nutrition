@@ -5,6 +5,27 @@ const anthropic = new Anthropic();
 const MODEL = 'claude-sonnet-5';
 const MAX_TOKENS = 1024;
 
+// Telegram's sendMessage rejects an empty body (400 "message text is empty"), which can happen
+// when a response is truncated before any text block starts (e.g. stop_reason 'max_tokens') —
+// every return path below must fall back to this instead of ''.
+const FALLBACK_TEXT = "Désolé, je n'ai pas de réponse à te donner, réessaie.";
+
+// Logged only on the empty-text path, so it stays silent on every normal turn and shows up in
+// Vercel logs exactly when FALLBACK_TEXT is about to be used — the evidence needed to tell a
+// max_tokens truncation apart from the other empty-content edge cases.
+function logEmptyTextResponse(context: string, response: Anthropic.Message): void {
+  console.error('Empty-text Claude response', {
+    context,
+    stopReason: response.stop_reason,
+    contentBlocks: response.content.map((block) => ({
+      type: block.type,
+      ...(block.type === 'text' ? { textLength: block.text.length } : {}),
+      ...(block.type === 'tool_use' ? { toolName: block.name } : {}),
+    })),
+    outputTokens: response.usage.output_tokens,
+  });
+}
+
 function cachedSystemPrompt(systemPrompt: string): Anthropic.MessageCreateParams['system'] {
   return [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral', ttl: '1h' } }];
 }
@@ -33,7 +54,8 @@ export async function converse(systemPrompt: string, messages: ChatMessage[]): P
 
   const textBlock = response.content.find((block) => block.type === 'text');
   const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
-  return { text, outputTokens: response.usage.output_tokens };
+  if (!text) logEmptyTextResponse('converse', response);
+  return { text: text || FALLBACK_TEXT, outputTokens: response.usage.output_tokens };
 }
 
 export interface ToolDefinition {
@@ -89,14 +111,16 @@ export async function converseWithTool(
     if (response.stop_reason !== 'tool_use') {
       const textBlock = response.content.find((block) => block.type === 'text');
       const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
-      return { text, outputTokens: totalOutputTokens };
+      if (!text) logEmptyTextResponse('converseWithTool:final', response);
+      return { text: text || FALLBACK_TEXT, outputTokens: totalOutputTokens };
     }
 
     messages.push({ role: 'assistant', content: response.content });
 
     const toolUseBlock = response.content.find((block) => block.type === 'tool_use');
     if (!toolUseBlock || toolUseBlock.type !== 'tool_use') {
-      return { text: '', outputTokens: totalOutputTokens };
+      logEmptyTextResponse('converseWithTool:missing-tool-use', response);
+      return { text: FALLBACK_TEXT, outputTokens: totalOutputTokens };
     }
 
     const resultContent = await handleTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>);

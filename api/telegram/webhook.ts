@@ -104,53 +104,73 @@ async function handleOnboardingChatTool(name: string, input: Record<string, unkn
 }
 
 async function handleMessage(chatId: number, text: string): Promise<void> {
-  const onboardingDone = await isOnboardingBasicsComplete();
-  const history = await recentMessages(onboardingDone ? HISTORY_MESSAGE_LIMIT : ONBOARDING_HISTORY_MESSAGE_LIMIT);
+  try {
+    const onboardingDone = await isOnboardingBasicsComplete();
+    const history = await recentMessages(onboardingDone ? HISTORY_MESSAGE_LIMIT : ONBOARDING_HISTORY_MESSAGE_LIMIT);
 
-  const result = onboardingDone
-    ? await converseWithTool(
-        (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
-          (await weeklyScheduleSystemPromptAddition()) +
-          (await buildRoutineSystemPromptAddition()) +
-          SAFETY_GUARDRAILS_PROMPT,
-        history,
-        text,
-        GENERAL_CHAT_TOOLS,
-        handleGeneralChatTool
-      )
-    : await converseWithTool(
-        ONBOARDING_SYSTEM_PROMPT + `\n\nDate du jour : ${todayIsoDate()}.` + SAFETY_GUARDRAILS_PROMPT,
-        history,
-        text,
-        [ONBOARDING_TOOL, DEFINE_ACTIVITY_ROUTINE_TOOL, FLAG_CONCERN_TOOL],
-        handleOnboardingChatTool
-      );
+    const result = onboardingDone
+      ? await converseWithTool(
+          (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
+            (await weeklyScheduleSystemPromptAddition()) +
+            (await buildRoutineSystemPromptAddition()) +
+            SAFETY_GUARDRAILS_PROMPT,
+          history,
+          text,
+          GENERAL_CHAT_TOOLS,
+          handleGeneralChatTool
+        )
+      : await converseWithTool(
+          ONBOARDING_SYSTEM_PROMPT + `\n\nDate du jour : ${todayIsoDate()}.` + SAFETY_GUARDRAILS_PROMPT,
+          history,
+          text,
+          [ONBOARDING_TOOL, DEFINE_ACTIVITY_ROUTINE_TOOL, FLAG_CONCERN_TOOL],
+          handleOnboardingChatTool
+        );
 
-  await saveMessage('user', text);
-  await saveMessage('assistant', result.text, result.outputTokens);
-  await sendMessage(chatId, result.text);
+    await saveMessage('user', text);
+    await saveMessage('assistant', result.text, result.outputTokens);
+    await sendMessage(chatId, result.text);
+  } catch (err) {
+    await reportError(chatId, err);
+  }
 }
 
 async function handlePdfMessage(chatId: number, fileId: string): Promise<void> {
-  const history = await recentMessages(HISTORY_MESSAGE_LIMIT);
-  const fileBuffer = await downloadTelegramFile(fileId);
-  const documentBase64 = fileBuffer.toString('base64');
+  try {
+    const history = await recentMessages(HISTORY_MESSAGE_LIMIT);
+    const fileBuffer = await downloadTelegramFile(fileId);
+    const documentBase64 = fileBuffer.toString('base64');
 
-  const result = await converseWithTool(
-    (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
-      (await weeklyScheduleSystemPromptAddition()) +
-      SAFETY_GUARDRAILS_PROMPT +
-      BODY_SCAN_PDF_PROMPT,
-    history,
-    'Voici mon scan de composition corporelle (PDF).',
-    GENERAL_CHAT_TOOLS,
-    handleGeneralChatTool,
-    documentBase64
-  );
+    const result = await converseWithTool(
+      (await buildScenarioSystemPrompt(SYSTEM_PROMPT, todayIsoDate())) +
+        (await weeklyScheduleSystemPromptAddition()) +
+        SAFETY_GUARDRAILS_PROMPT +
+        BODY_SCAN_PDF_PROMPT,
+      history,
+      'Voici mon scan de composition corporelle (PDF).',
+      GENERAL_CHAT_TOOLS,
+      handleGeneralChatTool,
+      documentBase64
+    );
 
-  await saveMessage('user', '[PDF composition corporelle envoyé]');
-  await saveMessage('assistant', result.text, result.outputTokens);
-  await sendMessage(chatId, result.text);
+    await saveMessage('user', '[PDF composition corporelle envoyé]');
+    await saveMessage('assistant', result.text, result.outputTokens);
+    await sendMessage(chatId, result.text);
+  } catch (err) {
+    await reportError(chatId, err);
+  }
+}
+
+// Without this, an exception anywhere above (Claude API, DB, Telegram) leaves the user with no
+// reply at all: the webhook already answered Telegram with 200 before this runs in `waitUntil`,
+// so a silent throw here is otherwise invisible outside Vercel's function logs.
+async function reportError(chatId: number, err: unknown): Promise<void> {
+  console.error('handleMessage failed:', err);
+  try {
+    await sendMessage(chatId, "Une erreur s'est produite de mon côté, réessaie dans un instant.");
+  } catch (sendErr) {
+    console.error('Failed to notify user of error:', sendErr);
+  }
 }
 
 const SLEEP_QUALITIES: SleepQuality[] = ['good', 'medium', 'bad'];
