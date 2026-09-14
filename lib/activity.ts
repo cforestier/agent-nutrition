@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { weekdayOf } from './dateUtils.js';
+import { weekdayOf, todayIsoDate } from './dateUtils.js';
 import { getWeeklyDefault } from './weeklyScheduleStore.js';
 import { getProfileSnapshot } from './profile.js';
 import type { ToolDefinition } from './claude.js';
@@ -107,6 +107,12 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
 export async function handleLogActivityTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as LogActivityInput;
   const status = input.status ?? 'done';
+
+  // A `done` activity already happened, so it can't be dated after today — catches the model
+  // miscalculating "today" (e.g. logging tomorrow's date for something the user just did).
+  if (status === 'done' && input.date > todayIsoDate()) {
+    return `La date ${input.date} est dans le futur alors que le statut est 'done' (activité déjà réalisée) — vérifie la date du jour donnée dans le prompt système et corrige-la avant de réessayer, sauf si l'utilisateur a explicitement précisé une autre date.`;
+  }
 
   const hasDeviceCalories = input.reportedCalories !== undefined;
   const hasDurationAndIntensity = input.durationMinutes !== undefined && input.intensity !== undefined;

@@ -7,6 +7,7 @@ import {
   answerCallbackQuery,
   downloadTelegramFile,
 } from '../../lib/telegram.js';
+import { todayIsoDate } from '../../lib/dateUtils.js';
 import { saveSleepQuality } from '../../lib/sleep.js';
 import type { SleepQuality } from '../../lib/calc/baseline.js';
 import { converseWithTool } from '../../lib/claude.js';
@@ -199,6 +200,3 @@ async function handleCallbackQuery(cq: { callbackQueryId: string; chatId: number
   }
 }
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}

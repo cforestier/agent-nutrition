@@ -178,6 +178,19 @@ describe('handleApplyActivityRoutineTool', () => {
     const result = await handleApplyActivityRoutineTool({ routineName: 'routine inconnue xyz', date: date1 });
     expect(result).toContain('Aucune routine');
   });
+
+  it('rejects a real occurrence dated after today, before even looking up the routine', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const result = await handleApplyActivityRoutineTool({
+      routineName: 'routine inconnue xyz', // deliberately unknown: the date check must fire first
+      date: tomorrow,
+      reportedKcal: 65,
+    });
+
+    expect(result).toContain('futur');
+    expect(result).not.toContain('Aucune routine');
+  });
 });
 
 describe('handleDefineActivityRoutineTool — reachable error paths', () => {

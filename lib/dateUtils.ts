@@ -10,6 +10,10 @@ const WEEKDAY_ORDER: Weekday[] = [
   'saturday',
 ];
 
+export function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function addDays(dateStr: string, delta: number): string {
   const date = new Date(`${dateStr}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + delta);

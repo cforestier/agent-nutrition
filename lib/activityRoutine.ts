@@ -4,6 +4,7 @@ import { getProfileSnapshot } from './profile.js';
 import { lookupMet, metToKcal, SPORT_DISCOUNTS, recomputeEventBonusForDate } from './activity.js';
 import type { SportType, Intensity } from './activity.js';
 import { WEEKDAYS } from './weeklySchedule.js';
+import { todayIsoDate } from './dateUtils.js';
 import type { ToolDefinition } from './claude.js';
 
 export interface RoutineLeg {
@@ -174,13 +175,20 @@ export interface ApplyActivityRoutineInput {
 
 export async function handleApplyActivityRoutineTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as ApplyActivityRoutineInput;
+  const isReal = input.reportedKcal !== undefined;
+
+  // A confirmed real occurrence already happened, so it can't be dated after today — catches the
+  // model miscalculating "today" (e.g. logging tomorrow's date for something the user just did).
+  // Checked before the routine lookup: it's a plain input-plausibility check, independent of
+  // whether the routine itself exists.
+  if (isReal && input.date > todayIsoDate()) {
+    return `La date ${input.date} est dans le futur alors qu'un total réel est rapporté (occurrence déjà réalisée) — vérifie la date du jour donnée dans le prompt système et corrige-la avant de réessayer, sauf si l'utilisateur a explicitement précisé une autre date.`;
+  }
 
   const routine = await findRoutineByNameOrAlias(input.routineName);
   if (!routine) {
     return `Aucune routine nommée "${input.routineName}" n'est connue — demande à l'utilisateur de la décrire, puis crée-la avec define_activity_routine avant de réessayer.`;
   }
-
-  const isReal = input.reportedKcal !== undefined;
 
   // Matched regardless of status: a user correcting an already-confirmed total ("en fait 500,
   // pas 450") must update that same `done` row, not create a second one. `orderBy` ensures that

@@ -261,6 +261,22 @@ describe('handleLogActivityTool', () => {
     expect(logs[0].status).toBe('done');
     expect(logs[0].reportedCalories).toBe(350);
   });
+
+  it('rejects a done activity dated after today instead of silently writing it', async () => {
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    const result = await handleLogActivityTool({
+      date: tomorrow,
+      description: 'vélo vers la gare',
+      sportType: 'cycling',
+      reportedCalories: 65,
+      relationToPlan: 'replaces',
+    });
+
+    expect(result).toContain('futur');
+    const log = await prisma.activityLog.findFirst({ where: { date: tomorrow, description: 'vélo vers la gare' } });
+    expect(log).toBeNull();
+  });
 });
 
 describe('metToKcal / lookupMet', () => {
