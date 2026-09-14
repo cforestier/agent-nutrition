@@ -38,13 +38,18 @@ export function metToKcal(met: number, durationMinutes: number, weightKg: number
 // (user/scenario intent). It drives `excludeAtypical` in the 14-day rolling intake average that
 // feeds the observed-TDEE adaptation loop, so deriving it from activity bonuses would silently
 // drop every recurring-routine day out of that average.
-// Cancelled rows are filtered in JS rather than in the query on purpose: legacy documents
-// predating the `status` field physically lack it in MongoDB, so any `where: { status: ... }`
-// clause silently drops them (verified empirically), whereas Prisma applies the schema default
-// on read — so post-filtering counts them, correctly, as non-cancelled.
+// Cancelled/superseded rows are filtered in JS rather than in the query on purpose: legacy
+// documents predating the `status` field physically lack it in MongoDB, so any
+// `where: { status: ... }` clause silently drops them (verified empirically), whereas Prisma
+// applies the schema default on read — so post-filtering counts them, correctly, as active.
+// `superseded` marks a routine's morning estimate once the real occurrence has been confirmed
+// (see `handleApplyActivityRoutineTool`): it stays in the journal for comparison but must not
+// double-count its bonus alongside the real `done` row it was replaced by.
+const EXCLUDED_FROM_BONUS_STATUSES = new Set(['cancelled', 'superseded']);
+
 export async function recomputeEventBonusForDate(date: string): Promise<void> {
   const logs = await prisma.activityLog.findMany({ where: { date } });
-  const total = logs.reduce((sum, log) => sum + (log.status === 'cancelled' ? 0 : log.bonusKcal), 0);
+  const total = logs.reduce((sum, log) => sum + (EXCLUDED_FROM_BONUS_STATUSES.has(log.status) ? 0 : log.bonusKcal), 0);
   await prisma.dayPlan.upsert({
     where: { date },
     create: { date, scenariosApplied: [], segmentsResolved: [], eventBonusKcal: total },

@@ -146,13 +146,20 @@ export const APPLY_ACTIVITY_ROUTINE_TOOL: ToolDefinition = {
   description:
     "Applique une routine d'activité déjà définie à une date donnée. " +
     "N'indique PAS reportedKcal si l'utilisateur annonce seulement qu'il va faire cette routine (application proactive, avant que ça ait eu lieu) — l'outil utilise alors la moyenne apprise ou l'estimation de départ. " +
-    "Indique reportedKcal si l'utilisateur confirme une occurrence réelle avec un vrai total (ex: sa montre) — ça affine la moyenne de la routine pour la prochaine fois.",
+    "Indique reportedKcal si l'utilisateur confirme une occurrence réelle avec un vrai total (ex: sa montre) — ça affine la moyenne de la routine pour la prochaine fois. " +
+    "Si l'utilisateur ne rapporte que le réel d'UNE PARTIE de la routine du jour, pas encore terminée (ex: 'l'aller à la gare, 65 kcal' pour une routine 'aller au bureau' qui inclut aussi le retour), " +
+    "passe cumulative: true — reportedKcal s'ADDITIONNE alors au total déjà loggé aujourd'hui pour cette routine au lieu de le remplacer. " +
+    "N'utilise cumulative: true que si le message ne couvre explicitement qu'une étape/partie ; si l'utilisateur donne le total complet ou corrige un chiffre déjà donné ('en fait c'était 500, pas 450'), n'indique pas cumulative (ou false).",
   input_schema: {
     type: 'object',
     properties: {
       routineName: { type: 'string' },
       date: { type: 'string', description: 'YYYY-MM-DD' },
       reportedKcal: { type: 'number' },
+      cumulative: {
+        type: 'boolean',
+        description: "true si reportedKcal est une étape supplémentaire à additionner au total du jour déjà loggé pour cette routine.",
+      },
     },
     required: ['routineName', 'date'],
   },
@@ -162,6 +169,7 @@ export interface ApplyActivityRoutineInput {
   routineName: string;
   date: string;
   reportedKcal?: number;
+  cumulative?: boolean;
 }
 
 export async function handleApplyActivityRoutineTool(rawInput: Record<string, unknown>): Promise<string> {
@@ -173,18 +181,55 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
   }
 
   const isReal = input.reportedKcal !== undefined;
-  const effectiveKcal = input.reportedKcal ?? routine.observedAvgKcal ?? routine.estimatedKcal;
-  const bonusKcal = effectiveKcal * (1 - routine.blendedDiscountPct);
 
-  // Matched regardless of status: a user correcting a total they already confirmed
-  // ("en fait 500, pas 450") must update the same row, not create a second `done` one.
+  // Matched regardless of status: a user correcting an already-confirmed total ("en fait 500,
+  // pas 450") must update that same `done` row, not create a second one. `orderBy` ensures that
+  // when both a `superseded` estimate and its `done` occurrence exist for the day, the more
+  // recently created `done` row is the one found (see the split below).
   const existing = await prisma.activityLog.findFirst({
     where: { date: input.date, routineId: routine.id },
+    orderBy: { createdAt: 'desc' },
   });
   const wasAlreadyDone = existing?.status === 'done';
   const previousReportedKcal = existing?.reportedCalories;
 
-  if (existing) {
+  // `cumulative` adds this message's real number to what's already logged today for this
+  // routine (e.g. the morning leg, then the evening return, reported as two separate messages)
+  // instead of treating it as a correction of the same total.
+  const isCumulativeAdd = isReal && input.cumulative === true && wasAlreadyDone && previousReportedKcal !== undefined;
+  const effectiveKcal = isReal
+    ? isCumulativeAdd
+      ? (previousReportedKcal as number) + (input.reportedKcal as number)
+      : (input.reportedKcal as number)
+    : (routine.observedAvgKcal ?? routine.estimatedKcal);
+  const bonusKcal = effectiveKcal * (1 - routine.blendedDiscountPct);
+
+  if (existing && isReal && existing.status === 'planned') {
+    // Confirming a real total for this morning's auto-applied estimate: keep the estimate
+    // visible (status `superseded`, excluded from the day's bonus sum in
+    // `recomputeEventBonusForDate`) instead of overwriting it, so the journal can show both the
+    // estimate and the real occurrence side by side.
+    await prisma.activityLog.update({
+      where: { id: existing.id },
+      data: { status: 'superseded' },
+    });
+    await prisma.activityLog.create({
+      data: {
+        date: input.date,
+        description: routine.name,
+        sportType: routine.primarySportType ?? 'other',
+        reportedCalories: effectiveKcal,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: effectiveKcal,
+        discountPct: routine.blendedDiscountPct,
+        bonusKcal,
+        estimationMethod: 'device',
+        routineId: routine.id,
+        status: 'done',
+      },
+    });
+  } else if (existing) {
     // Re-applying after a cancellation revives the occurrence rather than leaving it cancelled.
     const nextStatus = isReal ? 'done' : existing.status === 'cancelled' ? 'planned' : existing.status;
     await prisma.activityLog.update({
@@ -212,17 +257,16 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
 
   if (isReal) {
     if (wasAlreadyDone && previousReportedKcal !== undefined) {
-      // Correction of an occurrence already folded into the average: replace that sample's
-      // contribution instead of adding a new one, so the same occurrence isn't absorbed twice.
+      // Correction (or cumulative addition) of an occurrence already folded into the average:
+      // replace that sample's contribution with the new running total `effectiveKcal` instead of
+      // adding a new sample, so the same occurrence isn't absorbed twice.
       const sampleCount = Math.max(routine.sampleCount, 1);
       const sumBefore = (routine.observedAvgKcal ?? routine.estimatedKcal) * sampleCount;
-      const newAvg = (sumBefore - previousReportedKcal + (input.reportedKcal as number)) / sampleCount;
+      const newAvg = (sumBefore - previousReportedKcal + effectiveKcal) / sampleCount;
       await prisma.activityRoutine.update({ where: { id: routine.id }, data: { observedAvgKcal: newAvg } });
     } else {
       const newSampleCount = routine.sampleCount + 1;
-      const newAvg =
-        ((routine.observedAvgKcal ?? routine.estimatedKcal) * routine.sampleCount + (input.reportedKcal as number)) /
-        newSampleCount;
+      const newAvg = ((routine.observedAvgKcal ?? routine.estimatedKcal) * routine.sampleCount + effectiveKcal) / newSampleCount;
       await prisma.activityRoutine.update({
         where: { id: routine.id },
         data: { observedAvgKcal: newAvg, sampleCount: newSampleCount },
@@ -232,6 +276,9 @@ export async function handleApplyActivityRoutineTool(rawInput: Record<string, un
 
   await recomputeEventBonusForDate(input.date);
 
+  if (isCumulativeAdd) {
+    return `Étape ajoutée à "${routine.name}" pour le ${input.date} : +${(input.reportedKcal as number).toFixed(0)} kcal, total du jour ${effectiveKcal.toFixed(0)} kcal (${bonusKcal.toFixed(0)} kcal de bonus, rabais ${(routine.blendedDiscountPct * 100).toFixed(0)}%).`;
+  }
   const note = isReal ? 'confirmée (réelle)' : 'appliquée par anticipation (estimation)';
   return `Routine "${routine.name}" ${note} pour le ${input.date} : ${bonusKcal.toFixed(0)} kcal de bonus (rabais ${(routine.blendedDiscountPct * 100).toFixed(0)}%).`;
 }

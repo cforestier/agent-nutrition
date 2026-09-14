@@ -136,18 +136,25 @@ describe('handleApplyActivityRoutineTool', () => {
     expect(routine?.observedAvgKcal).toBeNull();
   });
 
-  it('replaces the estimated total with a real reported total and updates the running average', async () => {
+  it('keeps the morning estimate visible (superseded) and logs the real total as a separate row', async () => {
     const result = await handleApplyActivityRoutineTool({ routineName: 'rta', date: date1, reportedKcal: 400 });
 
     // bonus = 400 * (1-0.2) = 320
     expect(result).toContain('320');
     expect(result).toContain('réelle');
 
-    const logs = await prisma.activityLog.findMany({ where: { date: date1, description: 'routine test apply' } });
-    expect(logs).toHaveLength(1);
-    expect(logs[0].status).toBe('done');
-    expect(logs[0].bonusKcal).toBeCloseTo(320, 5);
+    const logs = await prisma.activityLog.findMany({
+      where: { date: date1, description: 'routine test apply' },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(logs).toHaveLength(2);
+    expect(logs[0].status).toBe('superseded');
+    expect(logs[0].bonusKcal).toBeCloseTo(240, 5); // original estimate, kept for comparison
+    expect(logs[1].status).toBe('done');
+    expect(logs[1].bonusKcal).toBeCloseTo(320, 5);
 
+    // Only the `done` row's bonus counts toward the day's target — not double-counted with the
+    // superseded estimate it replaced.
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: date1 } });
     expect(dayPlan?.eventBonusKcal).toBeCloseTo(320, 5);
 
@@ -227,7 +234,7 @@ describe('handleApplyActivityRoutineTool — correcting an already-confirmed occ
     await prisma.activityRoutine.deleteMany({ where: { name: routineName } });
   });
 
-  it('replaces the sample in place instead of creating a second done row', async () => {
+  it('replaces the done sample in place on a second correction, keeping the superseded estimate untouched', async () => {
     await prisma.activityRoutine.create({
       data: {
         name: routineName,
@@ -240,26 +247,84 @@ describe('handleApplyActivityRoutineTool — correcting an already-confirmed occ
     });
 
     await handleApplyActivityRoutineTool({ routineName: 'rtc', date }); // proactive -> planned
-    await handleApplyActivityRoutineTool({ routineName: 'rtc', date, reportedKcal: 450 }); // confirmed -> done
+    await handleApplyActivityRoutineTool({ routineName: 'rtc', date, reportedKcal: 450 }); // confirmed -> superseded + done
 
     const afterConfirm = await prisma.activityRoutine.findFirst({ where: { name: routineName } });
     expect(afterConfirm?.sampleCount).toBe(1);
     expect(afterConfirm?.observedAvgKcal).toBeCloseTo(450, 5);
 
-    // "en fait 500, pas 450"
+    // "en fait 500, pas 450" — corrects the already-confirmed `done` row, not the superseded estimate.
     await handleApplyActivityRoutineTool({ routineName: 'rtc', date, reportedKcal: 500 });
 
-    const logs = await prisma.activityLog.findMany({ where: { date } });
-    expect(logs).toHaveLength(1);
-    expect(logs[0].status).toBe('done');
-    expect(logs[0].reportedCalories).toBeCloseTo(500, 5);
+    const logs = await prisma.activityLog.findMany({ where: { date }, orderBy: { createdAt: 'asc' } });
+    expect(logs).toHaveLength(2);
+    expect(logs[0].status).toBe('superseded');
+    expect(logs[0].reportedCalories).toBeCloseTo(300, 5); // original estimate, unaffected by the correction
+    expect(logs[1].status).toBe('done');
+    expect(logs[1].reportedCalories).toBeCloseTo(500, 5);
 
     const afterCorrection = await prisma.activityRoutine.findFirst({ where: { name: routineName } });
     expect(afterCorrection?.sampleCount).toBe(1); // NOT incremented a second time
     expect(afterCorrection?.observedAvgKcal).toBeCloseTo(500, 5); // replaced, not averaged in twice
 
     const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
-    expect(dayPlan?.eventBonusKcal).toBeCloseTo(400, 5); // 500 * (1 - 0.2), not double-counted
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(400, 5); // 500 * (1 - 0.2), not double-counted with the superseded estimate
+  });
+});
+
+describe('handleApplyActivityRoutineTool — cumulative legs reported across separate messages', () => {
+  const date = '1998-06-03';
+  const routineName = 'routine test cumulative';
+
+  afterAll(async () => {
+    await prisma.activityLog.deleteMany({ where: { date } });
+    await prisma.dayPlan.deleteMany({ where: { date } });
+    await prisma.activityRoutine.deleteMany({ where: { name: routineName } });
+  });
+
+  it('adds each leg to the running total instead of replacing it', async () => {
+    await prisma.activityRoutine.create({
+      data: {
+        name: routineName,
+        aliases: ['rtcum'],
+        estimatedKcal: 300,
+        blendedDiscountPct: 0.2,
+        sampleCount: 0,
+        recurringWeekdays: [],
+      },
+    });
+
+    await handleApplyActivityRoutineTool({ routineName: 'rtcum', date }); // proactive -> planned
+    // Morning leg: vélo jusqu'à la gare. Nothing to add to yet, so this behaves like a normal
+    // first confirmation (not the cumulative message) — bonus = 65 * (1 - 0.2) = 52.
+    const first = await handleApplyActivityRoutineTool({ routineName: 'rtcum', date, reportedKcal: 65, cumulative: true });
+    expect(first).toContain('52');
+
+    const afterFirstLeg = await prisma.activityLog.findMany({ where: { date }, orderBy: { createdAt: 'asc' } });
+    expect(afterFirstLeg).toHaveLength(2);
+    expect(afterFirstLeg[0].status).toBe('superseded');
+    expect(afterFirstLeg[1].status).toBe('done');
+    expect(afterFirstLeg[1].reportedCalories).toBeCloseTo(65, 5); // nothing to add to yet
+
+    // Evening leg: retour.
+    const second = await handleApplyActivityRoutineTool({ routineName: 'rtcum', date, reportedKcal: 90, cumulative: true });
+    expect(second).toContain('+90');
+    expect(second).toContain('155'); // running total for the day
+
+    const afterSecondLeg = await prisma.activityLog.findMany({ where: { date }, orderBy: { createdAt: 'asc' } });
+    expect(afterSecondLeg).toHaveLength(2); // still one `done` row, updated in place — not a third row
+    expect(afterSecondLeg[0].status).toBe('superseded');
+    expect(afterSecondLeg[0].reportedCalories).toBeCloseTo(300, 5); // estimate untouched
+    expect(afterSecondLeg[1].status).toBe('done');
+    expect(afterSecondLeg[1].reportedCalories).toBeCloseTo(155, 5);
+    expect(afterSecondLeg[1].bonusKcal).toBeCloseTo(124, 5); // 155 * (1 - 0.2)
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBeCloseTo(124, 5); // superseded estimate excluded
+
+    const routine = await prisma.activityRoutine.findFirst({ where: { name: routineName } });
+    expect(routine?.sampleCount).toBe(1); // still one occurrence for the day, not two samples
+    expect(routine?.observedAvgKcal).toBeCloseTo(155, 5);
   });
 });
 

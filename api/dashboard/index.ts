@@ -603,6 +603,7 @@ const DASHBOARD_HTML = `<!doctype html>
 
     var SPORT_LABELS = { cycling: 'Vélo', running: 'Course à pied', strength: 'Musculation', crossfit: 'Crossfit', other: 'Autre' };
     var INTENSITY_LABELS = { light: 'léger', moderate: 'modéré', sustained: 'soutenu', vigorous: 'vigoureux', maximal: 'maximal' };
+    var ACTIVITY_STATUS_LABELS = { planned: 'prévu', done: 'confirmé', cancelled: 'annulé', superseded: 'estimation initiale' };
 
     function todayIso() {
       return new Date().toLocaleDateString('en-CA');
@@ -655,6 +656,8 @@ const DASHBOARD_HTML = `<!doctype html>
 
     function renderJournal(journal) {
       const rows = [];
+      var routineEstimateKcal = 0;
+      var routineRealKcal = 0;
 
       journal.meals.forEach(function (meal) {
         rows.push({ time: meal.time, type: 'Repas', detail: meal.rawDescription, kcal: meal.kcalMid });
@@ -668,7 +671,18 @@ const DASHBOARD_HTML = `<!doctype html>
         }
         detailParts.push(activity.estimationMethod === 'met_estimate' ? 'estimé' : 'montre/tracker');
         detailParts.push(activity.relationToPlan === 'replaces' ? 'remplace le prévu' : 'en plus du prévu');
+        detailParts.push(ACTIVITY_STATUS_LABELS[activity.status] || activity.status);
         rows.push({ time: activity.time, type: 'Activité', detail: detailParts.join(' · '), kcal: activity.reportedCalories });
+
+        // Only routine-linked occurrences have a comparable estimate/real pair — a standalone
+        // log_activity entry has no estimate counterpart to weigh it against.
+        if (activity.routineId) {
+          if (activity.status === 'planned' || activity.status === 'superseded') {
+            routineEstimateKcal += activity.reportedCalories;
+          } else if (activity.status === 'done') {
+            routineRealKcal += activity.reportedCalories;
+          }
+        }
       });
 
       rows.sort(function (a, b) {
@@ -694,7 +708,17 @@ const DASHBOARD_HTML = `<!doctype html>
 
       const extrasHtml = extras.length ? '<p class="journal-extras">' + extras.join(' · ') + '</p>' : '';
 
-      document.getElementById('journal-content').innerHTML = tableHtml + extrasHtml;
+      var comparisonHtml = '';
+      if (routineEstimateKcal > 0 || routineRealKcal > 0) {
+        var delta = routineRealKcal - routineEstimateKcal;
+        var deltaSign = delta > 0 ? '+' : '';
+        comparisonHtml =
+          '<p class="journal-extras">Routines — estimé : ' + Math.round(routineEstimateKcal) +
+          ' kcal · réel : ' + Math.round(routineRealKcal) +
+          ' kcal · écart : ' + deltaSign + Math.round(delta) + ' kcal</p>';
+      }
+
+      document.getElementById('journal-content').innerHTML = tableHtml + extrasHtml + comparisonHtml;
     }
 
     async function loadJournal() {

@@ -22,6 +22,8 @@ export interface JournalActivityEntry {
   durationMinutes: number | null;
   estimationMethod: string | null;
   bonusKcal: number;
+  status: string;
+  routineId: string | null;
 }
 
 export interface DailyJournal {
@@ -65,6 +67,8 @@ export async function getDailyJournal(date: string): Promise<DailyJournal> {
       durationMinutes: activity.durationMinutes ?? null,
       estimationMethod: activity.estimationMethod ?? null,
       bonusKcal: activity.bonusKcal,
+      status: activity.status,
+      routineId: activity.routineId ?? null,
     })),
     weightKg: weight?.weightKg ?? null,
     sleepQuality: sleep?.quality ?? null,

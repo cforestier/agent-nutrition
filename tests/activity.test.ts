@@ -324,6 +324,16 @@ describe('recomputeEventBonusForDate', () => {
     const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
     expect(dayPlan?.eventBonusKcal).toBe(50);
   });
+
+  it('excludes superseded rows from the summed bonus', async () => {
+    const log = await prisma.activityLog.findFirst({ where: { date, bonusKcal: 50 } });
+    await prisma.activityLog.update({ where: { id: log!.id }, data: { status: 'superseded' } });
+
+    await recomputeEventBonusForDate(date);
+
+    const dayPlan = await prisma.dayPlan.findUnique({ where: { date } });
+    expect(dayPlan?.eventBonusKcal).toBe(0);
+  });
 });
 
 describe('recomputeEventBonusForDate with legacy rows', () => {
