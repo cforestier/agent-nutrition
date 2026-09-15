@@ -106,6 +106,12 @@ export const LOG_WEIGHED_MEAL_TOOL: ToolDefinition = {
   },
 };
 
+// If the model re-calls this tool for the same meal after a clarification round, it sometimes
+// resends foods that were already saved (instead of only the ones still ambiguous) despite the
+// tool description telling it not to — a prompt-only instruction isn't enough to prevent
+// double-counting, so this window-based check catches it at the data layer too.
+const DUPLICATE_LOOKBACK_MINUTES = 30;
+
 export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>): Promise<string> {
   const input = rawInput as unknown as LogWeighedMealInput;
 
@@ -142,20 +148,31 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
     });
   }
 
+  const lookbackSince = new Date(Date.now() - DUPLICATE_LOOKBACK_MINUTES * 60 * 1000);
+  const recentMeal = await prisma.meal.findFirst({
+    where: { rawDescription: input.rawDescription, createdAt: { gte: lookbackSince } },
+    orderBy: { createdAt: 'desc' },
+  });
+  const alreadyLoggedNames = new Set(
+    recentMeal ? (recentMeal.items as unknown as MealItem[]).map((i) => normalizeFoodName(i.name)) : []
+  );
+  const newItems = resolvedItems.filter((i) => !alreadyLoggedNames.has(normalizeFoodName(i.name)));
+  const duplicateCount = resolvedItems.length - newItems.length;
+
   // Resolved items are saved right away rather than held back until every item in the message
   // resolves — otherwise a single ambiguous/unmatched food (e.g. several Ciqual entries for
   // "pâtes") blocks logging of the clear ones too (e.g. "pastèque"), forcing the model to keep
   // the whole meal in conversation memory across the clarification back-and-forth instead of
   // just resolving the one food that actually needs it.
   let savedNote = '';
-  if (resolvedItems.length > 0) {
-    const totalKcal = resolvedItems.reduce((sum, i) => sum + i.kcal, 0);
+  if (newItems.length > 0) {
+    const totalKcal = newItems.reduce((sum, i) => sum + i.kcal, 0);
 
     await prisma.meal.create({
       data: {
         inputType: 'text',
         rawDescription: input.rawDescription,
-        items: resolvedItems as unknown as Prisma.InputJsonValue,
+        items: newItems as unknown as Prisma.InputJsonValue,
         kcalLow: totalKcal,
         kcalMid: totalKcal,
         kcalHigh: totalKcal,
@@ -164,7 +181,13 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
       },
     });
 
-    savedNote = `Repas pesé enregistré : ${totalKcal.toFixed(0)} kcal (${resolvedItems.length} aliment(s), confiance haute — lookup Ciqual).`;
+    savedNote = `Repas pesé enregistré : ${totalKcal.toFixed(0)} kcal (${newItems.length} aliment(s), confiance haute — lookup Ciqual).`;
+  }
+
+  if (duplicateCount > 0) {
+    savedNote +=
+      (savedNote ? ' ' : '') +
+      `${duplicateCount} aliment(s) déjà enregistré(s) il y a moins de ${DUPLICATE_LOOKBACK_MINUTES} min pour ce même repas, ignoré(s) pour éviter un doublon.`;
   }
 
   if (notFound.length > 0 || ambiguous.length > 0) {

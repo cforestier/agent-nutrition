@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterAll } from 'vitest';
 import { prisma } from '../lib/db.js';
 import { handleLogMealTool, handleLogWeighedMealTool } from '../lib/meals.js';
+import type { MealItem } from '../lib/meals.js';
 import * as foodsLib from '../lib/foods.js';
 
 describe('handleLogMealTool', () => {
@@ -143,7 +144,34 @@ describe('handleLogWeighedMealTool', () => {
     expect(saved?.items).toEqual([
       { name: 'Pastèque, crue', estimatedGrams: 200, kcal: 60, proteinG: 1.2, carbsG: 14, fatG: 0.4 },
     ]);
-    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+
+    // Simulates the model re-calling the tool with the FULL original item list (pastèque + the
+    // now-clarified pâtes) instead of only the clarified one — pastèque must not be logged twice.
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockImplementation(async (query: string) => {
+      if (query.includes('pastèque')) {
+        return [{ name: 'Pastèque, crue', kcalPer100g: 30, proteinPer100g: 0.6, carbsPer100g: 7, fatPer100g: 0.2 }];
+      }
+      return [{ name: 'Pâtes, cuites', kcalPer100g: 158, proteinPer100g: 5, carbsPer100g: 31, fatPer100g: 1 }];
+    });
+
+    const secondResult = await handleLogWeighedMealTool({
+      rawDescription: partialMarker,
+      items: [
+        { foodQuery: 'pastèque', grams: 200 },
+        { foodQuery: 'Pâtes, cuites', grams: 250 },
+      ],
+    });
+
+    expect(secondResult).toContain('déjà enregistré');
+
+    const mealsForMarker = await prisma.meal.findMany({ where: { rawDescription: partialMarker } });
+    expect(mealsForMarker).toHaveLength(2);
+    const watermelonRows = mealsForMarker.flatMap((m) => m.items as unknown as MealItem[]).filter((i) => i.name === 'Pastèque, crue');
+    expect(watermelonRows).toHaveLength(1);
+    const pastaRows = mealsForMarker.flatMap((m) => m.items as unknown as MealItem[]).filter((i) => i.name === 'Pâtes, cuites');
+    expect(pastaRows).toHaveLength(1);
+
+    for (const m of mealsForMarker) await prisma.meal.delete({ where: { id: m.id } });
   });
 
   it('auto-resolves when one candidate is an exact normalized-name match, even among several candidates', async () => {
