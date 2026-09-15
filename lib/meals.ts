@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { searchFoodCandidates } from './foods.js';
-import { normalizeFoodName } from './ciqualParser.js';
+import { normalizeFoodName, tokenizeFoodName } from './ciqualParser.js';
 import type { ToolDefinition } from './claude.js';
 
 export interface MealItem {
@@ -127,9 +127,14 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
       continue;
     }
 
-    const exactMatch = candidates.find(
-      (c) => normalizeFoodName(c.name) === normalizeFoodName(item.foodQuery)
-    );
+    // Token-set equality rather than literal string equality: Ciqual names are comma-separated
+    // ("Poulet, blanc, cuit") so a natural-phrase query never equals them character-for-character
+    // even when it names exactly that food and nothing else.
+    const queryTokens = new Set(tokenizeFoodName(item.foodQuery));
+    const exactMatch = candidates.find((c) => {
+      const candidateTokens = tokenizeFoodName(c.name);
+      return candidateTokens.length === queryTokens.size && candidateTokens.every((t) => queryTokens.has(t));
+    });
     const food = exactMatch ?? (candidates.length === 1 ? candidates[0] : undefined);
 
     if (!food) {

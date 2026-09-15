@@ -16,6 +16,43 @@ export function normalizeFoodName(name: string): string {
     .trim();
 }
 
+// Ciqual names are comma-separated descriptor lists ("Poulet, filet sans peau grillé/poêlé"),
+// not natural phrases, and use gendered/plural cooking adjectives ("cuite", "cuits", "rôties")
+// that a plain "cuit" query never literally contains. Matching by tokens (instead of a raw
+// substring of the whole query) makes word order and punctuation irrelevant; folding all cooking-
+// state variants down to isCookedToken/isRawToken lets "poulet cuit" match "grillé/poêlé" or
+// "rôtie/cuite au four" entries, and excludes raw ones, without needing an exact wording match.
+const COOKED_TOKENS = new Set([
+  'cuit', 'cuite',
+  'roti', 'rotie',
+  'grille', 'grillee',
+  'bouilli', 'bouillie',
+  'poele', 'poelee',
+  'frit', 'frite',
+  'vapeur', 'four', 'poche', 'pochee',
+]);
+
+const RAW_TOKENS = new Set(['cru', 'crue']);
+
+function singularize(token: string): string {
+  return token.length > 3 && token.endsWith('s') ? token.slice(0, -1) : token;
+}
+
+export function tokenizeFoodName(name: string): string[] {
+  return normalizeFoodName(name)
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0)
+    .map(singularize);
+}
+
+export function isCookedToken(token: string): boolean {
+  return COOKED_TOKENS.has(token);
+}
+
+export function isRawToken(token: string): boolean {
+  return RAW_TOKENS.has(token);
+}
+
 export interface CiqualFoodName {
   alimCode: string;
   nameFr: string;
