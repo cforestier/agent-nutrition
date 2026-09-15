@@ -84,7 +84,8 @@ export interface LogWeighedMealInput {
 export const LOG_WEIGHED_MEAL_TOOL: ToolDefinition = {
   name: 'log_weighed_meal',
   description:
-    "Enregistre un repas pesé, quand l'utilisateur donne un grammage précis pour chaque aliment (ex: \"200g de riz basmati cuit, 150g de poulet\"). Ne calcule JAMAIS toi-même les calories ou macros : donne uniquement le nom de chaque aliment tel que décrit et son poids en grammes, l'outil fait la recherche dans la base Ciqual et le calcul exact. Si l'outil répond que plusieurs aliments correspondent, pose la question à l'utilisateur pour choisir, puis rappelle l'outil avec un nom plus précis.",
+    "Enregistre un repas pesé, quand l'utilisateur donne un grammage précis pour chaque aliment (ex: \"200g de riz basmati cuit, 150g de poulet\"). Ne calcule JAMAIS toi-même les calories ou macros : donne uniquement le nom de chaque aliment tel que décrit et son poids en grammes, l'outil fait la recherche dans la base Ciqual et le calcul exact. " +
+    "Les aliments non ambigus sont enregistrés immédiatement, même si d'autres aliments du même message posent question — seuls les aliments encore à clarifier sont renvoyés dans la réponse. Pose la question à l'utilisateur UNIQUEMENT sur ceux-là, puis rappelle l'outil avec seulement ces aliments précisés (ne réinclus pas ceux déjà enregistrés, sous peine de les compter deux fois).",
   input_schema: {
     type: 'object',
     properties: {
@@ -141,8 +142,34 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
     });
   }
 
+  // Resolved items are saved right away rather than held back until every item in the message
+  // resolves — otherwise a single ambiguous/unmatched food (e.g. several Ciqual entries for
+  // "pâtes") blocks logging of the clear ones too (e.g. "pastèque"), forcing the model to keep
+  // the whole meal in conversation memory across the clarification back-and-forth instead of
+  // just resolving the one food that actually needs it.
+  let savedNote = '';
+  if (resolvedItems.length > 0) {
+    const totalKcal = resolvedItems.reduce((sum, i) => sum + i.kcal, 0);
+
+    await prisma.meal.create({
+      data: {
+        inputType: 'text',
+        rawDescription: input.rawDescription,
+        items: resolvedItems as unknown as Prisma.InputJsonValue,
+        kcalLow: totalKcal,
+        kcalMid: totalKcal,
+        kcalHigh: totalKcal,
+        confidence: 'high',
+        userCorrected: false,
+      },
+    });
+
+    savedNote = `Repas pesé enregistré : ${totalKcal.toFixed(0)} kcal (${resolvedItems.length} aliment(s), confiance haute — lookup Ciqual).`;
+  }
+
   if (notFound.length > 0 || ambiguous.length > 0) {
     const parts: string[] = [];
+    if (savedNote) parts.push(savedNote);
     if (ambiguous.length > 0) {
       const list = ambiguous
         .map((a) => `"${a.query}" → ${a.candidateNames.map((n, i) => `${i + 1}) ${n}`).join(' ')}`)
@@ -157,20 +184,5 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
     return parts.join(' ');
   }
 
-  const totalKcal = resolvedItems.reduce((sum, i) => sum + i.kcal, 0);
-
-  await prisma.meal.create({
-    data: {
-      inputType: 'text',
-      rawDescription: input.rawDescription,
-      items: resolvedItems as unknown as Prisma.InputJsonValue,
-      kcalLow: totalKcal,
-      kcalMid: totalKcal,
-      kcalHigh: totalKcal,
-      confidence: 'high',
-      userCorrected: false,
-    },
-  });
-
-  return `Repas pesé enregistré : ${totalKcal.toFixed(0)} kcal (${resolvedItems.length} aliment(s), confiance haute — lookup Ciqual).`;
+  return savedNote;
 }

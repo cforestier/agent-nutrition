@@ -114,6 +114,38 @@ describe('handleLogWeighedMealTool', () => {
     expect(saved).toBeNull();
   });
 
+  it('saves the resolved foods immediately and only reports the ambiguous one, instead of blocking the whole meal', async () => {
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockImplementation(async (query: string) => {
+      if (query.includes('pastèque')) {
+        return [{ name: 'Pastèque, crue', kcalPer100g: 30, proteinPer100g: 0.6, carbsPer100g: 7, fatPer100g: 0.2 }];
+      }
+      return [
+        { name: 'Pâtes, cuites', kcalPer100g: 158, proteinPer100g: 5, carbsPer100g: 31, fatPer100g: 1 },
+        { name: 'Pâtes fraîches, cuites', kcalPer100g: 175, proteinPer100g: 6, carbsPer100g: 34, fatPer100g: 1.5 },
+      ];
+    });
+
+    const partialMarker = `${marker}-partial`;
+    const result = await handleLogWeighedMealTool({
+      rawDescription: partialMarker,
+      items: [
+        { foodQuery: 'pastèque', grams: 200 },
+        { foodQuery: 'pâtes', grams: 250 },
+      ],
+    });
+
+    expect(result).toContain('Repas pesé enregistré');
+    expect(result).toContain('Pâtes, cuites');
+    expect(result).toContain('Pâtes fraîches, cuites');
+
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: partialMarker } });
+    expect(saved).not.toBeNull();
+    expect(saved?.items).toEqual([
+      { name: 'Pastèque, crue', estimatedGrams: 200, kcal: 60, proteinG: 1.2, carbsG: 14, fatG: 0.4 },
+    ]);
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+  });
+
   it('auto-resolves when one candidate is an exact normalized-name match, even among several candidates', async () => {
     vi.spyOn(foodsLib, 'searchFoodCandidates').mockResolvedValue([
       { name: 'Poulet, cru', kcalPer100g: 120, proteinPer100g: 21, carbsPer100g: 0, fatPer100g: 3 },
