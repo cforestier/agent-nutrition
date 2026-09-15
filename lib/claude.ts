@@ -3,7 +3,11 @@ import Anthropic from '@anthropic-ai/sdk';
 const anthropic = new Anthropic();
 
 const MODEL = 'claude-sonnet-5';
-const MAX_TOKENS = 1024;
+// Sonnet 5 has adaptive thinking on by default, drawing from this same max_tokens budget rather
+// than a separate allowance — a long user message (e.g. several activities in one recap) can burn
+// the whole budget on the thinking block alone, leaving stop_reason 'max_tokens' with no text or
+// tool_use at all. 1024 was too tight a ceiling for that; this is headroom against it.
+const MAX_TOKENS = 8192;
 
 // Telegram's sendMessage rejects an empty body (400 "message text is empty"), which can happen
 // when a response is truncated before any text block starts (e.g. stop_reason 'max_tokens') —
