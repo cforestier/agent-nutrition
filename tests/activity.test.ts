@@ -244,10 +244,31 @@ describe('handleLogActivityTool', () => {
     });
 
     expect(result).toContain('estimées');
+    expect(result).toContain('prévue à 12:00');
 
     const log = await prisma.activityLog.findFirst({ where: { date: dates[9] } });
     expect(log?.status).toBe('planned');
     expect(log?.plannedTime).toBe('12:00');
+  });
+
+  it('asks for the planned time before logging an activity announced ahead of time', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile(2500));
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+
+    const result = await handleLogActivityTool({
+      date: dates[9],
+      description: 'vélo retour à la maison',
+      sportType: 'cycling',
+      durationMinutes: 40,
+      intensity: 'moderate',
+      relationToPlan: 'additional',
+      status: 'planned',
+    });
+
+    expect(result).toContain('heure prévue');
+
+    const log = await prisma.activityLog.findFirst({ where: { date: dates[9], description: 'vélo retour à la maison' } });
+    expect(log).toBeNull();
   });
 
   it('updates the same planned entry in place when confirmed later instead of duplicating it', async () => {

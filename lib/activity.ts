@@ -83,7 +83,11 @@ export const LOG_ACTIVITY_TOOL: ToolDefinition = {
     "Si l'utilisateur ne précise pas si cette activité REMPLACE l'activité initialement prévue pour la journée ou si elle est EN PLUS, " +
     "demande-le lui explicitement avant d'appeler cet outil — ne suppose jamais. " +
     "Si l'activité correspond à une routine déjà définie (voir la liste des routines connues), utilise plutôt apply_activity_routine — " +
-    "n'utilise log_activity que pour une activité isolée, hors routine, sinon la même occurrence serait comptée deux fois.",
+    "n'utilise log_activity que pour une activité isolée, hors routine, sinon la même occurrence serait comptée deux fois. " +
+    "Si l'utilisateur annonce une activité qui N'A PAS ENCORE EU LIEU (ex: \"je vais courir à midi\", \"je fais du vélo dans une heure\"), " +
+    "appelle cet outil TOUT DE SUITE avec status: 'planned' et plannedTime (HH:MM) — n'attends pas que l'activité soit terminée pour l'enregistrer. " +
+    "Demande quand même la durée+intensité (ou les calories si déjà connues) pour estimer la dépense, exactement comme pour une activité déjà réalisée. " +
+    "Ça permet d'ajuster la cible du jour par anticipation. Quand l'activité a effectivement eu lieu, rappelle l'outil avec status: 'done' (et le vrai total si disponible) pour confirmer — la ligne 'planned' est mise à jour en place, pas dupliquée.",
   input_schema: {
     type: 'object',
     properties: {
@@ -113,6 +117,12 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
   // miscalculating "today" (e.g. logging tomorrow's date for something the user just did).
   if (status === 'done' && input.date > todayIsoDate()) {
     return `La date ${input.date} est dans le futur alors que le statut est 'done' (activité déjà réalisée) — vérifie la date du jour donnée dans le prompt système et corrige-la avant de réessayer, sauf si l'utilisateur a explicitement précisé une autre date.`;
+  }
+
+  // plannedTime is what a future intake-timing reminder would key off — an activity logged
+  // 'planned' without it would be invisible to that feature despite looking successfully saved.
+  if (status === 'planned' && !input.plannedTime) {
+    return "Il manque l'heure prévue (plannedTime, HH:MM) pour une activité annoncée à l'avance — demande-la à l'utilisateur avant de rappeler cet outil.";
   }
 
   const hasDeviceCalories = input.reportedCalories !== undefined;
@@ -185,9 +195,13 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
   const eventBonusKcal = await recomputeEventBonusForDate(input.date);
 
   const calorieNote = estimationMethod === 'met_estimate' ? `${reportedCalories} kcal estimées` : `${reportedCalories} kcal`;
+  // Distinguishes an anticipated announcement from a confirmed occurrence in the reply itself, so
+  // the user can tell from the confirmation alone whether it actually registered as 'planned' —
+  // both this and the missing-plannedTime check above exist because that used to be silent.
+  const statusNote = status === 'planned' ? ` (prévue à ${input.plannedTime})` : '';
 
   if (bonusKcal === 0) {
-    return `Activité enregistrée (${input.description}, ${calorieNote}). Écart avec le prévu trop faible (moins de ${MATERIALITY_THRESHOLD_KCAL} kcal après rabais) pour ajuster ta cible — considérée comme normale.`;
+    return `Activité enregistrée${statusNote} (${input.description}, ${calorieNote}). Écart avec le prévu trop faible (moins de ${MATERIALITY_THRESHOLD_KCAL} kcal après rabais) pour ajuster ta cible — considérée comme normale.`;
   }
 
   const sign = bonusKcal > 0 ? '+' : '';
@@ -197,5 +211,5 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
   const newTargetNote =
     profile.currentTargetKcal !== null ? ` → ${(profile.currentTargetKcal + eventBonusKcal).toFixed(0)} kcal aujourd'hui` : '';
 
-  return `Activité enregistrée (${input.description}, ${calorieNote}, rabais ${(discountPct * 100).toFixed(0)}%). Cible du jour ajustée de ${sign}${bonusKcal.toFixed(0)} kcal${newTargetNote}.`;
+  return `Activité enregistrée${statusNote} (${input.description}, ${calorieNote}, rabais ${(discountPct * 100).toFixed(0)}%). Cible du jour ajustée de ${sign}${bonusKcal.toFixed(0)} kcal${newTargetNote}.`;
 }
