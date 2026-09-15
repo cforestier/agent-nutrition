@@ -9,6 +9,14 @@ const MODEL = 'claude-sonnet-5';
 // tool_use at all. 1024 was too tight a ceiling for that; this is headroom against it.
 const MAX_TOKENS = 8192;
 
+// Effort 'low' keeps thinking shallow, which is plenty for this bot's plain conversational
+// tool-routing (no multi-step reasoning) and cuts token spend versus the API default of 'high'.
+// `output_config` predates this SDK version's types (0.68.0), but the client forwards `body` to
+// the API verbatim (see `create()` in @anthropic-ai/sdk/resources/messages/messages.js) — the
+// field still reaches the API correctly, hence the cast below instead of a type-only field.
+type OutputConfig = { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' };
+const OUTPUT_CONFIG: OutputConfig = { effort: 'low' };
+
 // Telegram's sendMessage rejects an empty body (400 "message text is empty"), which can happen
 // when a response is truncated before any text block starts (e.g. stop_reason 'max_tokens') —
 // every return path below must fall back to this instead of ''.
@@ -48,9 +56,10 @@ export async function converse(systemPrompt: string, messages: ChatMessage[]): P
   const response = await anthropic.messages.create({
     model: MODEL,
     max_tokens: MAX_TOKENS,
+    output_config: OUTPUT_CONFIG,
     system: cachedSystemPrompt(systemPrompt),
     messages,
-  });
+  } as Anthropic.MessageCreateParamsNonStreaming);
 
   if (response.stop_reason === 'refusal') {
     return { text: 'Désolé, je ne peux pas répondre à ça.', outputTokens: response.usage.output_tokens };
@@ -102,10 +111,11 @@ export async function converseWithTool(
     const response = await anthropic.messages.create({
       model: MODEL,
       max_tokens: MAX_TOKENS,
+      output_config: OUTPUT_CONFIG,
       system: cachedSystemPrompt(systemPrompt),
       tools,
       messages,
-    });
+    } as Anthropic.MessageCreateParamsNonStreaming);
     totalOutputTokens += response.usage.output_tokens;
 
     if (response.stop_reason === 'refusal') {

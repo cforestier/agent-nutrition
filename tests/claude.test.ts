@@ -29,6 +29,7 @@ describe('converse', () => {
     expect(createMock).toHaveBeenCalledWith({
       model: 'claude-sonnet-5',
       max_tokens: 8192,
+      output_config: { effort: 'low' },
       system: [{ type: 'text', text: 'system prompt', cache_control: { type: 'ephemeral', ttl: '1h' } }],
       messages: [{ role: 'user', content: 'salut' }],
     });
