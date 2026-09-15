@@ -75,6 +75,8 @@ describe('getDailyJournal', () => {
     expect(journal.activities[0].durationMinutes).toBe(40);
     expect(journal.activities[0].estimationMethod).toBe('met_estimate');
     expect(journal.activities[0].reportedCalories).toBe(381);
+    expect(journal.activities[0].baselineKcal).toBe(0);
+    expect(journal.activities[0].rawDiffKcal).toBe(381);
 
     expect(journal.weightKg).toBe(79.5);
     expect(journal.sleepQuality).toBe('good');

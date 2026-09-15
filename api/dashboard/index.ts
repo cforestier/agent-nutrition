@@ -670,7 +670,21 @@ const DASHBOARD_HTML = `<!doctype html>
           detailParts.push(Math.round(activity.durationMinutes) + ' min, intensité ' + (INTENSITY_LABELS[activity.intensity] || activity.intensity));
         }
         detailParts.push(activity.estimationMethod === 'met_estimate' ? 'estimé' : 'montre/tracker');
-        detailParts.push(activity.relationToPlan === 'replaces' ? 'remplace le prévu' : 'en plus du prévu');
+        if (activity.relationToPlan === 'replaces') {
+          // baselineKcal is the weekly-schedule average for this weekday (see getWeeklyDefault) —
+          // 0 doesn't mean "planned effort of zero", it means no weekly schedule entry exists for
+          // that weekday at all, so there was nothing to compare this activity against.
+          if (activity.baselineKcal > 0) {
+            const diffSign = activity.rawDiffKcal > 0 ? '+' : '';
+            detailParts.push(
+              'remplace le prévu (' + Math.round(activity.baselineKcal) + ' kcal) → écart ' + diffSign + Math.round(activity.rawDiffKcal) + ' kcal'
+            );
+          } else {
+            detailParts.push('remplace le prévu (aucune activité normale définie ce jour-là dans le planning hebdo)');
+          }
+        } else {
+          detailParts.push('en plus du prévu');
+        }
         detailParts.push(ACTIVITY_STATUS_LABELS[activity.status] || activity.status);
         rows.push({ time: activity.time, type: 'Activité', detail: detailParts.join(' · '), kcal: activity.reportedCalories });
 

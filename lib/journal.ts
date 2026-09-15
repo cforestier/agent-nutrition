@@ -18,6 +18,8 @@ export interface JournalActivityEntry {
   sportType: string;
   reportedCalories: number;
   relationToPlan: string;
+  baselineKcal: number;
+  rawDiffKcal: number;
   intensity: string | null;
   durationMinutes: number | null;
   estimationMethod: string | null;
@@ -63,6 +65,8 @@ export async function getDailyJournal(date: string): Promise<DailyJournal> {
       sportType: activity.sportType,
       reportedCalories: activity.reportedCalories,
       relationToPlan: activity.relationToPlan,
+      baselineKcal: activity.baselineKcal,
+      rawDiffKcal: activity.rawDiffKcal,
       intensity: activity.intensity ?? null,
       durationMinutes: activity.durationMinutes ?? null,
       estimationMethod: activity.estimationMethod ?? null,
