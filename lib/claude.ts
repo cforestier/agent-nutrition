@@ -117,17 +117,23 @@ export async function converseWithTool(
 
     messages.push({ role: 'assistant', content: response.content });
 
-    const toolUseBlock = response.content.find((block) => block.type === 'tool_use');
-    if (!toolUseBlock || toolUseBlock.type !== 'tool_use') {
+    const toolUseBlocks = response.content.filter(
+      (block): block is Anthropic.ToolUseBlock => block.type === 'tool_use'
+    );
+    if (toolUseBlocks.length === 0) {
       logEmptyTextResponse('converseWithTool:missing-tool-use', response);
       return { text: FALLBACK_TEXT, outputTokens: totalOutputTokens };
     }
 
-    const resultContent = await handleTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>);
-    messages.push({
-      role: 'user',
-      content: [{ type: 'tool_result', tool_use_id: toolUseBlock.id, content: resultContent }],
-    });
+    // Claude can emit several tool_use blocks in one turn (e.g. several activities logged at
+    // once) — every one of them needs a matching tool_result, or the next messages.create call
+    // is rejected outright by the API.
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const toolUseBlock of toolUseBlocks) {
+      const resultContent = await handleTool(toolUseBlock.name, toolUseBlock.input as Record<string, unknown>);
+      toolResults.push({ type: 'tool_result', tool_use_id: toolUseBlock.id, content: resultContent });
+    }
+    messages.push({ role: 'user', content: toolResults });
   }
 
   return { text: "Désolé, je n'ai pas réussi à traiter ta demande, réessaie.", outputTokens: totalOutputTokens };

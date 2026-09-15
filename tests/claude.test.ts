@@ -118,6 +118,46 @@ describe('converseWithTool', () => {
     expect(handleTool).toHaveBeenCalledWith('second_tool', { x: 1 });
   });
 
+  it('executes every tool_use block from a single turn and returns a tool_result for each', async () => {
+    createMock
+      .mockResolvedValueOnce({
+        stop_reason: 'tool_use',
+        content: [
+          { type: 'tool_use', id: 'tool_1', name: 'test_tool', input: { foo: 'a' } },
+          { type: 'tool_use', id: 'tool_2', name: 'test_tool', input: { foo: 'b' } },
+        ],
+        usage: { output_tokens: 3 },
+      })
+      .mockResolvedValueOnce({
+        stop_reason: 'end_turn',
+        content: [{ type: 'text', text: 'Terminé.' }],
+        usage: { output_tokens: 4 },
+      });
+
+    const handleTool = vi.fn().mockResolvedValueOnce('result a').mockResolvedValueOnce('result b');
+
+    const result = await converseWithTool('system', [], 'salut', [tool], handleTool);
+
+    expect(handleTool).toHaveBeenCalledTimes(2);
+    expect(handleTool).toHaveBeenNthCalledWith(1, 'test_tool', { foo: 'a' });
+    expect(handleTool).toHaveBeenNthCalledWith(2, 'test_tool', { foo: 'b' });
+    expect(createMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          {
+            role: 'user',
+            content: [
+              { type: 'tool_result', tool_use_id: 'tool_1', content: 'result a' },
+              { type: 'tool_result', tool_use_id: 'tool_2', content: 'result b' },
+            ],
+          },
+        ]),
+      })
+    );
+    expect(result).toEqual({ text: 'Terminé.', outputTokens: 7 });
+  });
+
   it('attaches a base64 PDF as a document content block on the user message when documentBase64 is given', async () => {
     createMock.mockResolvedValueOnce({
       stop_reason: 'end_turn',
