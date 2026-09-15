@@ -47,7 +47,7 @@ export function metToKcal(met: number, durationMinutes: number, weightKg: number
 // double-count its bonus alongside the real `done` row it was replaced by.
 const EXCLUDED_FROM_BONUS_STATUSES = new Set(['cancelled', 'superseded']);
 
-export async function recomputeEventBonusForDate(date: string): Promise<void> {
+export async function recomputeEventBonusForDate(date: string): Promise<number> {
   const logs = await prisma.activityLog.findMany({ where: { date } });
   const total = logs.reduce((sum, log) => sum + (EXCLUDED_FROM_BONUS_STATUSES.has(log.status) ? 0 : log.bonusKcal), 0);
   await prisma.dayPlan.upsert({
@@ -55,6 +55,7 @@ export async function recomputeEventBonusForDate(date: string): Promise<void> {
     create: { date, scenariosApplied: [], segmentsResolved: [], eventBonusKcal: total },
     update: { eventBonusKcal: total },
   });
+  return total;
 }
 
 const MATERIALITY_THRESHOLD_KCAL = 100;
@@ -181,7 +182,7 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
     await prisma.activityLog.create({ data: activityData });
   }
 
-  await recomputeEventBonusForDate(input.date);
+  const eventBonusKcal = await recomputeEventBonusForDate(input.date);
 
   const calorieNote = estimationMethod === 'met_estimate' ? `${reportedCalories} kcal estimées` : `${reportedCalories} kcal`;
 
@@ -190,8 +191,11 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
   }
 
   const sign = bonusKcal > 0 ? '+' : '';
+  // Uses the day's cumulative eventBonusKcal (all of today's activities), not just this one's
+  // bonusKcal, so the announced target matches what the dashboard shows via getTodaySummary —
+  // otherwise a second activity logged the same day would understate/overstate the real target.
   const newTargetNote =
-    profile.currentTargetKcal !== null ? ` → ${(profile.currentTargetKcal + bonusKcal).toFixed(0)} kcal aujourd'hui` : '';
+    profile.currentTargetKcal !== null ? ` → ${(profile.currentTargetKcal + eventBonusKcal).toFixed(0)} kcal aujourd'hui` : '';
 
   return `Activité enregistrée (${input.description}, ${calorieNote}, rabais ${(discountPct * 100).toFixed(0)}%). Cible du jour ajustée de ${sign}${bonusKcal.toFixed(0)} kcal${newTargetNote}.`;
 }

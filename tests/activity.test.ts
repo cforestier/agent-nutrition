@@ -209,7 +209,7 @@ describe('handleLogActivityTool', () => {
       reportedCalories: 400,
       relationToPlan: 'additional',
     });
-    await handleLogActivityTool({
+    const secondResult = await handleLogActivityTool({
       date: dates[8],
       description: 'course du midi',
       sportType: 'running',
@@ -220,6 +220,12 @@ describe('handleLogActivityTool', () => {
     // bonus1 = 400*(1-0.2)=320 ; bonus2 = 300*(1-0.25)=225
     const dayPlan = await prisma.dayPlan.findFirst({ where: { date: dates[8] } });
     expect(dayPlan?.eventBonusKcal).toBeCloseTo(320 + 225, 5);
+
+    // The announced target must reflect both of today's activities (2500 + 320 + 225 = 3045),
+    // not just this second call's own bonus (which alone would read 2500 + 225 = 2725) — that
+    // per-call-only number is what a Telegram user would otherwise see diverge from the dashboard.
+    expect(secondResult).toContain('3045');
+    expect(secondResult).not.toContain('2725');
   });
 
   it('logs a planned (not-yet-done) activity ahead of time, applying the bonus proactively', async () => {
