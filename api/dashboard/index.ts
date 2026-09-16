@@ -566,17 +566,6 @@ const DASHBOARD_HTML = `<!doctype html>
       }
     }
 
-    async function loadToday() {
-      const res = await fetch('/api/dashboard/today');
-      if (res.status === 401) {
-        showLogin();
-        return;
-      }
-      const summary = await res.json();
-      showDashboard();
-      renderToday(summary);
-    }
-
     async function loadWeights() {
       const res = await fetch('/api/dashboard/weights');
       if (res.status === 401) {
@@ -651,6 +640,10 @@ const DASHBOARD_HTML = `<!doctype html>
       }
       const summary = await res.json();
       showDashboard();
+      // The rings/deltas at the top of the page and the recap grid in the journal section both
+      // show the same day's totals — keeping them on the selected journalDate (instead of the
+      // rings staying pinned to today) is what makes them update together when you pick a date.
+      renderToday(summary);
       renderDayRecap(summary);
     }
 
@@ -856,7 +849,6 @@ const DASHBOARD_HTML = `<!doctype html>
     });
 
     function loadDashboard() {
-      loadToday();
       loadWeights();
       loadMacros();
       loadDay();
