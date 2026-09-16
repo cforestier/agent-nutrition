@@ -9,6 +9,18 @@ export interface WeeklyMacros {
   proteinTargetMaxG: number;
 }
 
+export interface UpcomingActivity {
+  id: string;
+  description: string;
+  hoursUntil: number;
+}
+
+export interface RecentDoneActivity {
+  id: string;
+  description: string;
+  hoursAgo: number;
+}
+
 export interface NotificationContext {
   dateIso: string;
   hourLocal: number;
@@ -30,6 +42,13 @@ export interface NotificationContext {
   currentTargetKcal: number | null;
   weeklyMacros: WeeklyMacros | null;
   recentSleepQualities: SleepQuality[];
+  weightKg: number | null;
+  todayCarbsG: number;
+  // The single soonest/most-recent qualifying (long/intense) activity, already filtered and
+  // window-checked by runNotificationTick — see PRE_EFFORT_WINDOW_HOURS / POST_EFFORT_WINDOW_HOURS
+  // there. null means no such activity is upcoming/recent right now.
+  upcomingActivity: UpcomingActivity | null;
+  recentDoneActivity: RecentDoneActivity | null;
 }
 
 export interface NotificationRuleResult {
@@ -161,11 +180,57 @@ export function ruleDietBreak(ctx: NotificationContext): NotificationRuleResult 
   };
 }
 
+// Conservative low end of the ~1-4 g/kg/h pre-endurance-exercise carb intake range (ACSM/ISSN
+// guidance). Collapsed into a same-day floor rather than an hours-before window because meal
+// timing isn't tracked precisely enough to compute the real windowed figure.
+const PRE_EFFORT_CARB_FLOOR_G_PER_KG = 1;
+const PRE_EFFORT_STALE_MEAL_HOURS = 4;
+
+export function ruleFuelBeforeActivity(ctx: NotificationContext): NotificationRuleResult | null {
+  if (!ctx.upcomingActivity) return null;
+
+  const carbsFloorG = ctx.weightKg !== null ? PRE_EFFORT_CARB_FLOOR_G_PER_KG * ctx.weightKg : null;
+  const carbsLow = carbsFloorG !== null && ctx.todayCarbsG < carbsFloorG;
+  const mealStale = ctx.latestMealAgeHours === null || ctx.latestMealAgeHours >= PRE_EFFORT_STALE_MEAL_HOURS;
+  if (!carbsLow && !mealStale) return null;
+
+  const { id, description, hoursUntil } = ctx.upcomingActivity;
+  const inLabel = hoursUntil < 1 ? "moins d'une heure" : `${Math.round(hoursUntil)}h`;
+
+  // Both signals often co-occur (skipping meals means skipping carbs too) — merged into one
+  // message instead of two separate rules so they don't fire as redundant back-to-back alerts.
+  const signals: string[] = [];
+  if (mealStale) {
+    signals.push(
+      ctx.latestMealAgeHours === null ? "aucun repas noté aujourd'hui" : `pas de repas depuis ${Math.round(ctx.latestMealAgeHours)}h`
+    );
+  }
+  if (carbsLow) {
+    signals.push(`glucides bas (${Math.round(ctx.todayCarbsG)}g, repère ~${(carbsFloorG as number).toFixed(0)}g avant une sortie longue/intense)`);
+  }
+
+  return {
+    rule: `fuel_pre_effort:${id}`,
+    message: `Tu as "${description}" prévu dans ${inLabel} — ${signals.join(' et ')}. Pense à manger un peu avant pour ne pas partir à sec.`,
+  };
+}
+
+export function ruleRefuelAfterActivity(ctx: NotificationContext): NotificationRuleResult | null {
+  if (!ctx.recentDoneActivity) return null;
+  const { id, description, hoursAgo } = ctx.recentDoneActivity;
+  return {
+    rule: `refuel_post_effort:${id}`,
+    message: `"${description}" terminé il y a ${Math.round(hoursAgo)}h, sans repas noté depuis — pense à manger (glucides + protéines) pour la récup, surtout après une séance de ce volume.`,
+  };
+}
+
 export const NOTIFICATION_RULES: NotificationRule[] = [
   ruleDayPlanPrompt,
   ruleWeeklyWeighIn,
   ruleWeeklyReview,
   ruleWeeklyMacroInsight,
   ruleDietBreak,
+  ruleFuelBeforeActivity,
+  ruleRefuelAfterActivity,
   ruleNoMealIn24h,
 ];

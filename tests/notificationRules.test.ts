@@ -6,6 +6,8 @@ import {
   ruleWeeklyReview,
   ruleWeeklyMacroInsight,
   ruleDietBreak,
+  ruleFuelBeforeActivity,
+  ruleRefuelAfterActivity,
   ruleNoMealIn24h,
 } from '../lib/notificationRules.js';
 import type { NotificationContext } from '../lib/notificationRules.js';
@@ -24,6 +26,10 @@ const baseCtx: NotificationContext = {
   currentTargetKcal: null,
   weeklyMacros: null,
   recentSleepQualities: [],
+  weightKg: 70,
+  todayCarbsG: 250,
+  upcomingActivity: null,
+  recentDoneActivity: null,
 };
 
 describe('ruleDayPlanPrompt', () => {
@@ -202,6 +208,63 @@ describe('ruleDietBreak', () => {
 
   it('does not fire otherwise', () => {
     expect(ruleDietBreak({ ...baseCtx, latestDailyState: null })).toBeNull();
+  });
+});
+
+describe('ruleFuelBeforeActivity', () => {
+  const upcomingActivity = { id: 'act1', description: 'Sortie vélo longue', hoursUntil: 1.5 };
+
+  it('fires when carbs today are below the weight-based floor', () => {
+    const result = ruleFuelBeforeActivity({
+      ...baseCtx,
+      upcomingActivity,
+      weightKg: 80,
+      todayCarbsG: 40,
+      latestMealAgeHours: 1,
+    });
+    expect(result?.rule).toBe('fuel_pre_effort:act1');
+    expect(result?.message).toContain('Sortie vélo longue');
+    expect(result?.message).toContain('glucides bas');
+  });
+
+  it('fires when no meal has been logged recently, even with enough carbs', () => {
+    const result = ruleFuelBeforeActivity({
+      ...baseCtx,
+      upcomingActivity,
+      weightKg: 80,
+      todayCarbsG: 300,
+      latestMealAgeHours: 6,
+    });
+    expect(result?.rule).toBe('fuel_pre_effort:act1');
+    expect(result?.message).toContain('pas de repas depuis 6h');
+  });
+
+  it('does not fire when carbs are sufficient and a meal was recent', () => {
+    expect(
+      ruleFuelBeforeActivity({ ...baseCtx, upcomingActivity, weightKg: 80, todayCarbsG: 300, latestMealAgeHours: 1 })
+    ).toBeNull();
+  });
+
+  it('does not fire without an upcoming qualifying activity', () => {
+    expect(
+      ruleFuelBeforeActivity({ ...baseCtx, upcomingActivity: null, weightKg: 80, todayCarbsG: 10, latestMealAgeHours: 10 })
+    ).toBeNull();
+  });
+});
+
+describe('ruleRefuelAfterActivity', () => {
+  it('fires when a qualifying activity finished recently with no meal since', () => {
+    const result = ruleRefuelAfterActivity({
+      ...baseCtx,
+      recentDoneActivity: { id: 'act2', description: 'Sortie course longue', hoursAgo: 1.2 },
+    });
+    expect(result?.rule).toBe('refuel_post_effort:act2');
+    expect(result?.message).toContain('Sortie course longue');
+    expect(result?.message).toContain('il y a 1h');
+  });
+
+  it('does not fire without a recent qualifying activity', () => {
+    expect(ruleRefuelAfterActivity({ ...baseCtx, recentDoneActivity: null })).toBeNull();
   });
 });
 

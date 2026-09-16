@@ -30,8 +30,9 @@ describe('runNotificationTick', () => {
     await prisma.notification.deleteMany({ where: { date: TEST_DATE } });
     await prisma.dayPlan.deleteMany({ where: { date: TEST_DATE } });
     await prisma.weight.deleteMany({ where: { date: TEST_DATE } });
-    await prisma.activityLog.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13'] } } });
-    await prisma.dayPlan.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13'] } } });
+    await prisma.activityLog.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13', '1998-04-20', '1998-04-21'] } } });
+    await prisma.dayPlan.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13', '1998-04-20', '1998-04-21'] } } });
+    await prisma.notification.deleteMany({ where: { date: { in: ['1998-04-06', '1998-04-13', '1998-04-20', '1998-04-21'] } } });
     await prisma.activityRoutine.deleteMany({ where: { name: { in: ['aller au bureau test', 'routine déjà loggée'] } } });
   });
 
@@ -221,5 +222,72 @@ describe('runNotificationTick', () => {
     expect(result.sent.map((s) => s.rule)).not.toEqual(
       expect.arrayContaining([expect.stringContaining('routine_auto_apply')])
     );
+  });
+
+  it('warns about fueling before a long/intense session planned within the next few hours', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile());
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
+    const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+
+    const activity = await prisma.activityLog.create({
+      data: {
+        date: '1998-04-20',
+        description: 'Sortie vélo longue',
+        sportType: 'cycling',
+        reportedCalories: 600,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: 600,
+        discountPct: 0.2,
+        bonusKcal: 480,
+        durationMinutes: 90,
+        status: 'planned',
+        plannedTime: '13:00', // 1998-04-20T09:30:00Z is 11:30 Zurich time (CEST) — 1.5h ahead
+      },
+    });
+
+    // 1998-04-20T09:30:00Z is a Monday 11:30 in Zurich (CEST), outside the morning day-plan window.
+    const result = await runNotificationTick(new Date('1998-04-20T09:30:00Z'), 12345);
+
+    expect(result.sent.map((s) => s.rule)).toContain(`fuel_pre_effort:${activity.id}`);
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('Sortie vélo longue'));
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('glucides bas'));
+  });
+
+  it('reminds to refuel after a long/intense session confirmed recently with no meal logged since', async () => {
+    vi.spyOn(profileLib, 'getProfileSnapshot').mockResolvedValue(baseProfile());
+    vi.spyOn(weeklyScheduleStoreLib, 'getWeeklyDefault').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
+    vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([]);
+    vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue([]);
+    const sendSpy = vi.spyOn(telegramLib, 'sendMessage').mockResolvedValue();
+
+    const activity = await prisma.activityLog.create({
+      data: {
+        date: '1998-04-21',
+        description: 'Sortie course longue',
+        sportType: 'running',
+        reportedCalories: 700,
+        relationToPlan: 'additional',
+        baselineKcal: 0,
+        rawDiffKcal: 700,
+        discountPct: 0.25,
+        bonusKcal: 525,
+        durationMinutes: 90,
+        status: 'done',
+        createdAt: new Date('1998-04-21T08:30:00Z'), // 1h before the tick below
+      },
+    });
+
+    // 1998-04-21T09:30:00Z is a Tuesday 11:30 in Zurich (CEST).
+    const result = await runNotificationTick(new Date('1998-04-21T09:30:00Z'), 12345);
+
+    expect(result.sent.map((s) => s.rule)).toContain(`refuel_post_effort:${activity.id}`);
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('Sortie course longue'));
   });
 });

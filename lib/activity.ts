@@ -119,8 +119,9 @@ export async function handleLogActivityTool(rawInput: Record<string, unknown>): 
     return `La date ${input.date} est dans le futur alors que le statut est 'done' (activité déjà réalisée) — vérifie la date du jour donnée dans le prompt système et corrige-la avant de réessayer, sauf si l'utilisateur a explicitement précisé une autre date.`;
   }
 
-  // plannedTime is what a future intake-timing reminder would key off — an activity logged
-  // 'planned' without it would be invisible to that feature despite looking successfully saved.
+  // plannedTime is what the pre/post-effort fueling reminders (see notificationRules.ts) key off
+  // — an activity logged 'planned' without it would be invisible to those checks despite looking
+  // successfully saved.
   if (status === 'planned' && !input.plannedTime) {
     return "Il manque l'heure prévue (plannedTime, HH:MM) pour une activité annoncée à l'avance — demande-la à l'utilisateur avant de rappeler cet outil.";
   }
