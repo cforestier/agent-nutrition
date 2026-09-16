@@ -51,6 +51,8 @@ export interface WeeklyDailyStateEntry {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  targetKcal: number | null;
+  observedTdee: number | null;
 }
 
 export async function getRecentDailyStates(limit: number): Promise<WeeklyDailyStateEntry[]> {
@@ -62,6 +64,8 @@ export async function getRecentDailyStates(limit: number): Promise<WeeklyDailySt
       proteinG: row.proteinG,
       carbsG: row.carbsG,
       fatG: row.fatG,
+      targetKcal: row.targetKcal,
+      observedTdee: row.observedTdee,
     }))
     .reverse();
 }

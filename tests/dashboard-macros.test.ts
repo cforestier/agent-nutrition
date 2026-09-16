@@ -40,9 +40,16 @@ describe('GET /api/dashboard/macros', () => {
   });
 
   it('returns the last 30 days of macro history for a valid session cookie', async () => {
-    const getRecentSpy = vi
-      .spyOn(notificationStoreLib, 'getRecentDailyStates')
-      .mockResolvedValue([{ date: '2026-01-01', totalKcal: 2600, proteinG: 140, carbsG: 260, fatG: 70 }]);
+    const entry = {
+      date: '2026-01-01',
+      totalKcal: 2600,
+      proteinG: 140,
+      carbsG: 260,
+      fatG: 70,
+      targetKcal: 2500,
+      observedTdee: 2700,
+    };
+    const getRecentSpy = vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([entry]);
     const cookieHeader = buildSessionCookieHeader('correct-horse');
     const cookieValue = cookieHeader.split(';')[0];
 
@@ -51,6 +58,6 @@ describe('GET /api/dashboard/macros', () => {
 
     expect(getRecentSpy).toHaveBeenCalledWith(30);
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual([{ date: '2026-01-01', totalKcal: 2600, proteinG: 140, carbsG: 260, fatG: 70 }]);
+    expect(res.body).toEqual([entry]);
   });
 });

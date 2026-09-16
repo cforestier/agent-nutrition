@@ -292,6 +292,8 @@ const DASHBOARD_HTML = `<!doctype html>
   .recap-stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 0.6rem 0.5rem; text-align: center; }
   .recap-label { display: block; font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.2rem; }
   .recap-value { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.86rem; font-weight: 600; }
+  .recap-value.good { color: var(--success); }
+  .recap-value.warn { color: var(--danger); }
 
   .log-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
   .log-table th {
@@ -399,6 +401,14 @@ const DASHBOARD_HTML = `<!doctype html>
         <div class="macro-chart">
           <h2>Lipides (g)</h2>
           <div id="fat-chart"></div>
+        </div>
+
+        <div class="macro-chart">
+          <h2>Bilan calorique</h2>
+          <p class="journal-date-label">7 derniers jours</p>
+          <div id="week-kcal-recap"></div>
+          <p class="journal-date-label" style="margin-top: 1.1rem;">14 derniers jours</p>
+          <div id="fortnight-kcal-recap"></div>
         </div>
       </section>
 
@@ -577,6 +587,42 @@ const DASHBOARD_HTML = `<!doctype html>
       renderLineChart('chart-container', weights.map(function (w) { return { date: w.date, value: w.weightKg }; }));
     }
 
+    function average(values) {
+      return values.length ? values.reduce(function (s, v) { return s + v; }, 0) / values.length : null;
+    }
+
+    // Averages "mangé" against two separate reference lines instead of one: targetKcal is the
+    // adjusted deficit goal (what daily recompute is steering toward, activity bonuses included),
+    // observedTdee is the maintenance level actually inferred from your weight trend — seeing both
+    // side by side is what makes a week/14d read as "on track for the diet" vs "roughly at maintenance".
+    function renderKcalRecap(containerId, entries) {
+      const container = document.getElementById(containerId);
+      const eaten = average(entries.map(function (e) { return e.totalKcal; }));
+      if (eaten === null) {
+        container.innerHTML = '<p class="journal-empty">Pas encore de données.</p>';
+        return;
+      }
+      const target = average(entries.map(function (e) { return e.targetKcal; }).filter(function (v) { return v !== null && v !== undefined; }));
+      const maintenance = average(entries.map(function (e) { return e.observedTdee; }).filter(function (v) { return v !== null && v !== undefined; }));
+
+      var deltaHtml = '';
+      if (target !== null) {
+        const delta = eaten - target;
+        const sign = delta > 0 ? '+' : '';
+        const cls = delta > 0 ? 'warn' : 'good';
+        deltaHtml =
+          '<div class="recap-stat"><span class="recap-label">Écart vs cible perte</span><span class="recap-value ' + cls + '">' + sign + Math.round(delta) + ' kcal/j</span></div>';
+      }
+
+      container.innerHTML =
+        '<div class="recap-grid">' +
+          '<div class="recap-stat"><span class="recap-label">Mangé (moy/j)</span><span class="recap-value">' + Math.round(eaten) + ' kcal</span></div>' +
+          '<div class="recap-stat"><span class="recap-label">Cible perte (moy/j)</span><span class="recap-value">' + (target !== null ? Math.round(target) + ' kcal' : '—') + '</span></div>' +
+          '<div class="recap-stat"><span class="recap-label">Maintien observé (moy/j)</span><span class="recap-value">' + (maintenance !== null ? Math.round(maintenance) + ' kcal' : '—') + '</span></div>' +
+          deltaHtml +
+        '</div>';
+    }
+
     async function loadMacros() {
       const res = await fetch('/api/dashboard/macros');
       if (res.status === 401) {
@@ -588,6 +634,8 @@ const DASHBOARD_HTML = `<!doctype html>
       renderLineChart('protein-chart', macros.map(function (m) { return { date: m.date, value: m.proteinG }; }));
       renderLineChart('carbs-chart', macros.map(function (m) { return { date: m.date, value: m.carbsG }; }));
       renderLineChart('fat-chart', macros.map(function (m) { return { date: m.date, value: m.fatG }; }));
+      renderKcalRecap('week-kcal-recap', macros.slice(-7));
+      renderKcalRecap('fortnight-kcal-recap', macros.slice(-14));
     }
 
     var SPORT_LABELS = { cycling: 'Vélo', running: 'Course à pied', strength: 'Musculation', crossfit: 'Crossfit', other: 'Autre' };

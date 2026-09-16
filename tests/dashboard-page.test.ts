@@ -81,6 +81,14 @@ describe('GET /api/dashboard', () => {
     expect(res.body).toContain('id="protein-delta-value"');
   });
 
+  it('includes the week/14-day calorie recap (eaten vs loss target vs observed maintenance)', () => {
+    const res = mockRes();
+    handler({ method: 'GET' } as any, res as any);
+    expect(res.body).toContain('id="week-kcal-recap"');
+    expect(res.body).toContain('id="fortnight-kcal-recap"');
+    expect(res.body).toContain('renderKcalRecap');
+  });
+
   it('includes the journal date picker, month calendar, recap and log table wiring', () => {
     const res = mockRes();
     handler({ method: 'GET' } as any, res as any);

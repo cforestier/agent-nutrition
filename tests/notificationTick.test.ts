@@ -110,9 +110,9 @@ describe('runNotificationTick', () => {
     vi.spyOn(notificationStoreLib, 'getMostRecentMeal').mockResolvedValue({ datetime: new Date('1999-09-05T18:00:00Z') });
     vi.spyOn(notificationStoreLib, 'getMostRecentDailyState').mockResolvedValue(null);
     vi.spyOn(notificationStoreLib, 'getRecentDailyStates').mockResolvedValue([
-      { date: '1999-09-03', totalKcal: 2600, proteinG: 120, carbsG: 260, fatG: 70 },
-      { date: '1999-09-04', totalKcal: 2550, proteinG: 115, carbsG: 250, fatG: 65 },
-      { date: '1999-09-05', totalKcal: 2500, proteinG: 110, carbsG: 240, fatG: 60 },
+      { date: '1999-09-03', totalKcal: 2600, proteinG: 120, carbsG: 260, fatG: 70, targetKcal: 2600, observedTdee: 2700 },
+      { date: '1999-09-04', totalKcal: 2550, proteinG: 115, carbsG: 250, fatG: 65, targetKcal: 2600, observedTdee: 2700 },
+      { date: '1999-09-05', totalKcal: 2500, proteinG: 110, carbsG: 240, fatG: 60, targetKcal: 2600, observedTdee: 2700 },
     ]);
     vi.spyOn(sleepLib, 'recentSleepQualities').mockResolvedValue(['bad', 'bad', 'medium']);
     vi.spyOn(claudeLib, 'converse').mockResolvedValue({

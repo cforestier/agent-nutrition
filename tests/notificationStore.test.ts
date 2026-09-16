@@ -36,15 +36,19 @@ describe('getRecentDailyStates', () => {
     await prisma.dailyState.deleteMany({ where: { date: { in: [dateA, dateB] } } });
   });
 
-  it('returns entries ordered by date ascending, with macro fields', async () => {
-    await prisma.dailyState.create({ data: { date: dateB, totalKcal: 2500, proteinG: 140, carbsG: 250, fatG: 70 } });
-    await prisma.dailyState.create({ data: { date: dateA, totalKcal: 2400, proteinG: 130, carbsG: 240, fatG: 65 } });
+  it('returns entries ordered by date ascending, with macro and target/maintenance fields', async () => {
+    await prisma.dailyState.create({
+      data: { date: dateB, totalKcal: 2500, proteinG: 140, carbsG: 250, fatG: 70, targetKcal: 2600, observedTdee: 2750 },
+    });
+    await prisma.dailyState.create({
+      data: { date: dateA, totalKcal: 2400, proteinG: 130, carbsG: 240, fatG: 65, targetKcal: 2600, observedTdee: null },
+    });
 
     const result = await getRecentDailyStates(2);
 
     expect(result).toEqual([
-      { date: dateA, totalKcal: 2400, proteinG: 130, carbsG: 240, fatG: 65 },
-      { date: dateB, totalKcal: 2500, proteinG: 140, carbsG: 250, fatG: 70 },
+      { date: dateA, totalKcal: 2400, proteinG: 130, carbsG: 240, fatG: 65, targetKcal: 2600, observedTdee: null },
+      { date: dateB, totalKcal: 2500, proteinG: 140, carbsG: 250, fatG: 70, targetKcal: 2600, observedTdee: 2750 },
     ]);
   });
 });
