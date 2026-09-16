@@ -212,7 +212,7 @@ describe('ruleDietBreak', () => {
 });
 
 describe('ruleFuelBeforeActivity', () => {
-  const upcomingActivity = { id: 'act1', description: 'Sortie vélo longue', hoursUntil: 1.5 };
+  const upcomingActivity = { id: 'act1', description: 'Sortie vélo longue', hoursUntil: 1.5, durationMinutes: null };
 
   it('fires when carbs today are below the weight-based floor', () => {
     const result = ruleFuelBeforeActivity({
@@ -248,6 +248,42 @@ describe('ruleFuelBeforeActivity', () => {
   it('does not fire without an upcoming qualifying activity', () => {
     expect(
       ruleFuelBeforeActivity({ ...baseCtx, upcomingActivity: null, weightKg: 80, todayCarbsG: 10, latestMealAgeHours: 10 })
+    ).toBeNull();
+  });
+
+  it('adds an intra-effort carb tip scaled by duration, even when pre-effort fueling is fine', () => {
+    const result = ruleFuelBeforeActivity({
+      ...baseCtx,
+      upcomingActivity: { ...upcomingActivity, durationMinutes: 200 },
+      weightKg: 80,
+      todayCarbsG: 300,
+      latestMealAgeHours: 1,
+    });
+    expect(result?.rule).toBe('fuel_pre_effort:act1');
+    expect(result?.message).toContain('200 min');
+    expect(result?.message).toContain('~90g de glucides/h');
+  });
+
+  it('scales the intra-effort tip down for a moderately long session', () => {
+    const result = ruleFuelBeforeActivity({
+      ...baseCtx,
+      upcomingActivity: { ...upcomingActivity, durationMinutes: 90 },
+      weightKg: 80,
+      todayCarbsG: 300,
+      latestMealAgeHours: 1,
+    });
+    expect(result?.message).toContain('~30g de glucides/h');
+  });
+
+  it('gives no intra-effort tip under an hour, and stays silent when pre-effort fueling is fine', () => {
+    expect(
+      ruleFuelBeforeActivity({
+        ...baseCtx,
+        upcomingActivity: { ...upcomingActivity, durationMinutes: 45 },
+        weightKg: 80,
+        todayCarbsG: 300,
+        latestMealAgeHours: 1,
+      })
     ).toBeNull();
   });
 });

@@ -256,6 +256,8 @@ describe('runNotificationTick', () => {
     expect(result.sent.map((s) => s.rule)).toContain(`fuel_pre_effort:${activity.id}`);
     expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('Sortie vélo longue'));
     expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('glucides bas'));
+    // durationMinutes: 90 falls in the 60-150min tier — 30g/h of intra-effort carbs.
+    expect(sendSpy).toHaveBeenCalledWith(12345, expect.stringContaining('~30g de glucides/h'));
   });
 
   it('reminds to refuel after a long/intense session confirmed recently with no meal logged since', async () => {

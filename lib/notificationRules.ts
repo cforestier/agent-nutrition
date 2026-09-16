@@ -13,6 +13,7 @@ export interface UpcomingActivity {
   id: string;
   description: string;
   hoursUntil: number;
+  durationMinutes: number | null;
 }
 
 export interface RecentDoneActivity {
@@ -186,19 +187,33 @@ export function ruleDietBreak(ctx: NotificationContext): NotificationRuleResult 
 const PRE_EFFORT_CARB_FLOOR_G_PER_KG = 1;
 const PRE_EFFORT_STALE_MEAL_HOURS = 4;
 
+// Rough intra-exercise carb-intake tiers (Jeukendrup-style guidance): negligible under an hour,
+// scaling up to ~90g/h once a session gets long enough that a single pre-loaded meal can't cover
+// it. Duration-gated rather than a flat number since the need scales with time, not with intensity.
+function intraEffortCarbsPerHour(durationMinutes: number): number | null {
+  if (durationMinutes < 60) return null;
+  if (durationMinutes < 150) return 30;
+  if (durationMinutes < 180) return 60;
+  return 90;
+}
+
 export function ruleFuelBeforeActivity(ctx: NotificationContext): NotificationRuleResult | null {
   if (!ctx.upcomingActivity) return null;
 
   const carbsFloorG = ctx.weightKg !== null ? PRE_EFFORT_CARB_FLOOR_G_PER_KG * ctx.weightKg : null;
   const carbsLow = carbsFloorG !== null && ctx.todayCarbsG < carbsFloorG;
   const mealStale = ctx.latestMealAgeHours === null || ctx.latestMealAgeHours >= PRE_EFFORT_STALE_MEAL_HOURS;
-  if (!carbsLow && !mealStale) return null;
+  const { id, description, hoursUntil, durationMinutes } = ctx.upcomingActivity;
+  const intraCarbsPerHour = durationMinutes !== null ? intraEffortCarbsPerHour(durationMinutes) : null;
+  // Intra-effort need depends on duration alone, not on today's pre-effort fueling signals — a
+  // long session with fine pre-effort carbs still deserves the "eat during" reminder, which the
+  // carbsLow/mealStale-only condition used to miss entirely.
+  if (!carbsLow && !mealStale && intraCarbsPerHour === null) return null;
 
-  const { id, description, hoursUntil } = ctx.upcomingActivity;
   const inLabel = hoursUntil < 1 ? "moins d'une heure" : `${Math.round(hoursUntil)}h`;
 
-  // Both signals often co-occur (skipping meals means skipping carbs too) — merged into one
-  // message instead of two separate rules so they don't fire as redundant back-to-back alerts.
+  // Both pre-effort signals often co-occur (skipping meals means skipping carbs too) — merged into
+  // one message instead of two separate rules so they don't fire as redundant back-to-back alerts.
   const signals: string[] = [];
   if (mealStale) {
     signals.push(
@@ -209,9 +224,18 @@ export function ruleFuelBeforeActivity(ctx: NotificationContext): NotificationRu
     signals.push(`glucides bas (${Math.round(ctx.todayCarbsG)}g, repère ~${(carbsFloorG as number).toFixed(0)}g avant une sortie longue/intense)`);
   }
 
+  const parts: string[] = [
+    signals.length > 0
+      ? `Tu as "${description}" prévu dans ${inLabel} — ${signals.join(' et ')}. Pense à manger un peu avant pour ne pas partir à sec.`
+      : `Tu as "${description}" prévu dans ${inLabel}.`,
+  ];
+  if (intraCarbsPerHour !== null) {
+    parts.push(`Vu la durée prévue (${Math.round(durationMinutes as number)} min), pense aussi à ~${intraCarbsPerHour}g de glucides/h pendant l'effort.`);
+  }
+
   return {
     rule: `fuel_pre_effort:${id}`,
-    message: `Tu as "${description}" prévu dans ${inLabel} — ${signals.join(' et ')}. Pense à manger un peu avant pour ne pas partir à sec.`,
+    message: parts.join(' '),
   };
 }
 

@@ -63,7 +63,7 @@ function selectUpcomingActivity(
     const deltaMinutes = plannedMinutes - nowMinutesLocal;
     if (deltaMinutes <= 0 || deltaMinutes > PRE_EFFORT_WINDOW_HOURS * 60) continue;
     if (!best || deltaMinutes < best.hoursUntil * 60) {
-      best = { id: activity.id, description: activity.description, hoursUntil: deltaMinutes / 60 };
+      best = { id: activity.id, description: activity.description, hoursUntil: deltaMinutes / 60, durationMinutes: activity.durationMinutes };
     }
   }
   return best;
