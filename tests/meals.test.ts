@@ -4,6 +4,11 @@ import { handleLogMealTool, handleLogWeighedMealTool } from '../lib/meals.js';
 import type { MealItem } from '../lib/meals.js';
 import * as foodsLib from '../lib/foods.js';
 
+async function deleteMealsWithRawDescription(rawDescription: string): Promise<void> {
+  const rows = await prisma.meal.findMany({ where: { rawDescription } });
+  for (const row of rows) await prisma.meal.delete({ where: { id: row.id } });
+}
+
 describe('handleLogMealTool', () => {
   const marker = `test-${Date.now()}-pates-bolognaise`;
   let createdId: string | undefined;
@@ -189,6 +194,91 @@ describe('handleLogWeighedMealTool', () => {
 
     const saved = await prisma.meal.findFirst({ where: { rawDescription: `${marker}-exact` } });
     expect(saved?.confidence).toBe('high');
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+  });
+});
+
+describe('cross-meal duplicate confirmation window', () => {
+  const foodName = `Test Duplicate Food ${Date.now()}`;
+  const firstMarker = `test-${Date.now()}-dup-first`;
+  const secondMarker = `test-${Date.now()}-dup-second`;
+  const confirmedMarker = `test-${Date.now()}-dup-confirmed`;
+
+  afterAll(async () => {
+    await deleteMealsWithRawDescription(firstMarker);
+    await deleteMealsWithRawDescription(secondMarker);
+    await deleteMealsWithRawDescription(confirmedMarker);
+  });
+
+  it('asks for confirmation instead of auto-logging when the same food reappears within 30 minutes of a closed meal', async () => {
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockResolvedValue([
+      { name: foodName, kcalPer100g: 200, proteinPer100g: 10, carbsPer100g: 20, fatPer100g: 5 },
+    ]);
+
+    const firstResult = await handleLogWeighedMealTool({
+      rawDescription: firstMarker,
+      items: [{ foodQuery: foodName, grams: 100 }],
+    });
+    expect(firstResult).toContain('Repas pesé enregistré');
+
+    const secondResult = await handleLogWeighedMealTool({
+      rawDescription: secondMarker,
+      items: [{ foodQuery: foodName, grams: 100 }],
+    });
+
+    expect(secondResult).toContain('portion supplémentaire');
+    const savedSecond = await prisma.meal.findFirst({ where: { rawDescription: secondMarker } });
+    expect(savedSecond).toBeNull();
+  });
+
+  it('saves the food once the model resubmits it with confirmDuplicate: true', async () => {
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockResolvedValue([
+      { name: foodName, kcalPer100g: 200, proteinPer100g: 10, carbsPer100g: 20, fatPer100g: 5 },
+    ]);
+
+    const result = await handleLogWeighedMealTool({
+      rawDescription: confirmedMarker,
+      items: [{ foodQuery: foodName, grams: 100, confirmDuplicate: true }],
+    });
+
+    expect(result).toContain('Repas pesé enregistré');
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: confirmedMarker } });
+    expect(saved).not.toBeNull();
+  });
+
+  it('does not ask for confirmation when the previous log of the same food is older than the duplicate window', async () => {
+    const oldFoodName = `Test Old Duplicate Food ${Date.now()}`;
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockResolvedValue([
+      { name: oldFoodName, kcalPer100g: 150, proteinPer100g: 8, carbsPer100g: 15, fatPer100g: 4 },
+    ]);
+
+    const oldMarker = `test-${Date.now()}-old-dup`;
+    const newMarker = `test-${Date.now()}-old-dup-new`;
+
+    const old = await prisma.meal.create({
+      data: {
+        inputType: 'text',
+        rawDescription: oldMarker,
+        items: [{ name: oldFoodName, estimatedGrams: 100, kcal: 150, proteinG: 8, carbsG: 15, fatG: 4 }],
+        kcalLow: 150,
+        kcalMid: 150,
+        kcalHigh: 150,
+        confidence: 'high',
+        userCorrected: false,
+        createdAt: new Date(Date.now() - 40 * 60 * 1000),
+      },
+    });
+
+    const result = await handleLogWeighedMealTool({
+      rawDescription: newMarker,
+      items: [{ foodQuery: oldFoodName, grams: 100 }],
+    });
+
+    expect(result).toContain('Repas pesé enregistré');
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: newMarker } });
+    expect(saved).not.toBeNull();
+
+    await prisma.meal.delete({ where: { id: old.id } });
     if (saved) await prisma.meal.delete({ where: { id: saved.id } });
   });
 });
