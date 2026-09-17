@@ -48,11 +48,6 @@ describe('handleLogMealTool', () => {
 
 describe('handleLogWeighedMealTool', () => {
   const marker = `test-${Date.now()}-riz-poulet-pese`;
-  let createdId: string | undefined;
-
-  afterAll(async () => {
-    if (createdId) await prisma.meal.delete({ where: { id: createdId } });
-  });
 
   it('looks up each food, computes exact macros from grams, and saves with high confidence', async () => {
     vi.spyOn(foodsLib, 'searchFoodCandidates').mockImplementation(async (query: string) => {
@@ -76,7 +71,6 @@ describe('handleLogWeighedMealTool', () => {
     expect(result).toContain('528');
 
     const saved = await prisma.meal.findFirst({ where: { rawDescription: marker } });
-    createdId = saved?.id;
     expect(saved?.inputType).toBe('text');
     expect(saved?.confidence).toBe('high');
     expect(saved?.kcalLow).toBe(saved?.kcalHigh);
@@ -84,6 +78,7 @@ describe('handleLogWeighedMealTool', () => {
       { name: 'Riz basmati, cuit', estimatedGrams: 200, kcal: 280, proteinG: 6, carbsG: 60, fatG: 1 },
       { name: 'Poulet, blanc, cuit', estimatedGrams: 150, kcal: 247.5, proteinG: 46.5, carbsG: 0, fatG: 5.4 },
     ]);
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
   });
 
   it('returns a clarification message and saves nothing when a food is not found', async () => {

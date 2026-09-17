@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { searchFoodCandidates } from './foods.js';
-import { normalizeFoodName, tokenizeFoodName } from './ciqualParser.js';
+import { tokenizeFoodName, isCookedToken, isRawToken } from './ciqualParser.js';
 import type { ToolDefinition } from './claude.js';
 
 export interface MealItem {
@@ -86,6 +86,32 @@ const DUPLICATE_CONFIRM_WINDOW_MINUTES = 30;
 // of bread?" unanswered and moves straight to describing dinner) — any food name the two meals
 // happen to share would then be silently treated as an already-logged resend instead of being
 // evaluated as its own (possibly duplicate) entry.
+// A food name is treated as "the same food" as another if they share a significant token once
+// cooking-state words (cru/cuit/rôti/...) and French filler words are stripped — Ciqual resolves
+// the same real-world food to a different entry depending on how it's phrased each clarification
+// round ("oignon cru" vs "oignon cuit"), so matching on the exact resolved name misses those and
+// lets the same food get logged again every round.
+const FILLER_TOKENS = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'a', 'et', 'en', 'sans', 'avec']);
+
+function significantTokens(name: string): string[] {
+  return tokenizeFoodName(name).filter(
+    (t) => t.length >= 3 && !isCookedToken(t) && !isRawToken(t) && !FILLER_TOKENS.has(t)
+  );
+}
+
+// Subset containment rather than "any shared token" — two names must not just overlap on one
+// word, the smaller significant-token set must be entirely contained in the other. That still
+// matches "oignon" against "oignon" and "riz thaï cuit" against "riz gluant thaï cuit", but
+// rejects "riz basmati" against "riz gluant thaï" (a real second, different rice dish), where a
+// bare any-overlap check would wrongly treat "riz" alone as proof it's the same food.
+function sameFood(a: string, b: string): boolean {
+  const tokensA = new Set(significantTokens(a));
+  const tokensB = new Set(significantTokens(b));
+  if (tokensA.size === 0 || tokensB.size === 0) return false;
+  const [smaller, larger] = tokensA.size <= tokensB.size ? [tokensA, tokensB] : [tokensB, tokensA];
+  return [...smaller].every((t) => larger.has(t));
+}
+
 async function getSessionId(candidateTexts: string[]): Promise<string> {
   const cutoff = new Date(Date.now() - SESSION_WINDOW_MINUTES * 60 * 1000);
   const candidateTokens = new Set(candidateTexts.flatMap(tokenizeFoodName));
@@ -119,18 +145,16 @@ interface DedupResult {
 
 async function splitByDuplicateStatus(sessionId: string, items: MealItemInput[]): Promise<DedupResult> {
   const sessionMeals = await prisma.meal.findMany({ where: { sessionId } });
-  const namesAlreadyInSession = new Set(
-    sessionMeals.flatMap((m) => (m.items as unknown as MealItem[]).map((i) => normalizeFoodName(i.name)))
-  );
+  const namesAlreadyInSession = sessionMeals.flatMap((m) => (m.items as unknown as MealItem[]).map((i) => i.name));
 
   const dupCutoff = new Date(Date.now() - DUPLICATE_CONFIRM_WINDOW_MINUTES * 60 * 1000);
-  const recentMeals = await prisma.meal.findMany({ where: { createdAt: { gte: dupCutoff } } });
-  const lastLoggedAtByName = new Map<string, Date>();
+  const recentMeals = await prisma.meal.findMany({
+    where: { createdAt: { gte: dupCutoff }, sessionId: { not: sessionId } },
+  });
+  const recentItems: { name: string; createdAt: Date }[] = [];
   for (const meal of recentMeals) {
     for (const item of meal.items as unknown as MealItem[]) {
-      const key = normalizeFoodName(item.name);
-      const existing = lastLoggedAtByName.get(key);
-      if (!existing || meal.createdAt > existing) lastLoggedAtByName.set(key, meal.createdAt);
+      recentItems.push({ name: item.name, createdAt: meal.createdAt });
     }
   }
 
@@ -139,16 +163,17 @@ async function splitByDuplicateStatus(sessionId: string, items: MealItemInput[])
   let duplicateWithinSessionCount = 0;
 
   for (const { confirmDuplicate, ...item } of items) {
-    const key = normalizeFoodName(item.name);
-
-    if (namesAlreadyInSession.has(key)) {
+    if (namesAlreadyInSession.some((n) => sameFood(n, item.name))) {
       duplicateWithinSessionCount++;
       continue;
     }
 
-    const lastLoggedAt = lastLoggedAtByName.get(key);
-    if (lastLoggedAt && !confirmDuplicate) {
-      const minutesAgo = Math.max(0, Math.round((Date.now() - lastLoggedAt.getTime()) / 60000));
+    const lastMatch = recentItems
+      .filter((r) => sameFood(r.name, item.name))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+
+    if (lastMatch && !confirmDuplicate) {
+      const minutesAgo = Math.max(0, Math.round((Date.now() - lastMatch.createdAt.getTime()) / 60000));
       possibleDuplicates.push({ name: item.name, minutesAgo });
       continue;
     }
