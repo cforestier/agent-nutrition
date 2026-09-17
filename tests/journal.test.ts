@@ -66,6 +66,7 @@ describe('getDailyJournal', () => {
     expect(journal.date).toBe(testDate);
     expect(journal.meals).toHaveLength(1);
     expect(journal.meals[0].rawDescription).toBe('assiette de pâtes');
+    expect(journal.meals[0].itemsSummary).toBe('200g pâtes');
     expect(journal.meals[0].kcalMid).toBe(700);
     expect(journal.meals[0].time).toBe('12:30');
 

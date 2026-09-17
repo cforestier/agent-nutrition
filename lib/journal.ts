@@ -1,14 +1,27 @@
 import { prisma } from './db.js';
 import { addDays } from './dateUtils.js';
+import type { MealItem } from './meals.js';
 
 export interface JournalMealEntry {
   id: string;
   time: string;
   rawDescription: string;
+  itemsSummary: string;
   kcalLow: number;
   kcalMid: number;
   kcalHigh: number;
   inputType: string;
+}
+
+// A single logical meal can be split across several DB rows when Claude resolves it in batches
+// across a clarification back-and-forth (see lib/meals.ts) — each row's `items` only ever holds
+// what was actually counted in ITS kcal figures, but `rawDescription` is the model's free-text
+// description of the meal as it understood it at that point in the conversation, which can
+// mention foods that ended up counted in a *different* row (still ambiguous at the time). Showing
+// rawDescription next to that row's kcal makes it look like those foods were double-counted, so
+// the dashboard shows this items-derived summary instead — it always matches the row's own kcal.
+function summarizeItems(items: MealItem[]): string {
+  return items.map((item) => `${Math.round(item.estimatedGrams)}g ${item.name}`).join(', ');
 }
 
 export interface JournalActivityEntry {
@@ -53,6 +66,7 @@ export async function getDailyJournal(date: string): Promise<DailyJournal> {
       id: meal.id,
       time: meal.datetime.toISOString().slice(11, 16),
       rawDescription: meal.rawDescription,
+      itemsSummary: summarizeItems(meal.items as unknown as MealItem[]),
       kcalLow: meal.kcalLow,
       kcalMid: meal.kcalMid,
       kcalHigh: meal.kcalHigh,

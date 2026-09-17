@@ -701,7 +701,7 @@ const DASHBOARD_HTML = `<!doctype html>
       var routineRealKcal = 0;
 
       journal.meals.forEach(function (meal) {
-        rows.push({ time: meal.time, type: 'Repas', detail: meal.rawDescription, kcal: meal.kcalMid });
+        rows.push({ time: meal.time, type: 'Repas', detail: meal.itemsSummary, kcal: meal.kcalMid });
       });
 
       journal.activities.forEach(function (activity) {
