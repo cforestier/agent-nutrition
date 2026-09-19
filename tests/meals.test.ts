@@ -44,6 +44,42 @@ describe('handleLogMealTool', () => {
       { name: 'sauce bolognaise', estimatedGrams: 150, kcal: 220, proteinG: 15, carbsG: 8, fatG: 14 },
     ]);
   });
+
+  it('backdates the meal to mealDate when the user referred to a past day, keeping the current time of day', async () => {
+    const pastDateMarker = `test-${Date.now()}-pates-hier-soir`;
+
+    await handleLogMealTool({
+      rawDescription: pastDateMarker,
+      mealDate: '2020-01-01',
+      items: [{ name: 'compote de pommes', estimatedGrams: 200, kcal: 300, proteinG: 10, carbsG: 60, fatG: 2 }],
+      kcalLow: 280,
+      kcalMid: 300,
+      kcalHigh: 320,
+    });
+
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: pastDateMarker } });
+    expect(saved?.datetime.toISOString().slice(0, 10)).toBe('2020-01-01');
+    expect(saved?.datetime.getUTCHours()).toBe(new Date().getUTCHours());
+
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+  });
+
+  it('omitting mealDate stores the meal at the current date, not a stale default', async () => {
+    const noDateMarker = `test-${Date.now()}-pates-sans-date`;
+
+    await handleLogMealTool({
+      rawDescription: noDateMarker,
+      items: [{ name: 'compote de poires', estimatedGrams: 200, kcal: 300, proteinG: 10, carbsG: 60, fatG: 2 }],
+      kcalLow: 280,
+      kcalMid: 300,
+      kcalHigh: 320,
+    });
+
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: noDateMarker } });
+    expect(saved?.datetime.toISOString().slice(0, 10)).toBe(new Date().toISOString().slice(0, 10));
+
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+  });
 });
 
 describe('handleLogWeighedMealTool', () => {
@@ -189,6 +225,23 @@ describe('handleLogWeighedMealTool', () => {
 
     const saved = await prisma.meal.findFirst({ where: { rawDescription: `${marker}-exact` } });
     expect(saved?.confidence).toBe('high');
+    if (saved) await prisma.meal.delete({ where: { id: saved.id } });
+  });
+
+  it('backdates a weighed meal to mealDate when provided', async () => {
+    vi.spyOn(foodsLib, 'searchFoodCandidates').mockResolvedValue([
+      { name: 'Riz basmati, cuit', kcalPer100g: 140, proteinPer100g: 3, carbsPer100g: 30, fatPer100g: 0.5 },
+    ]);
+
+    const pastDateMarker = `${marker}-pesé-hier`;
+    await handleLogWeighedMealTool({
+      rawDescription: pastDateMarker,
+      mealDate: '2020-01-01',
+      items: [{ foodQuery: 'riz basmati cuit', grams: 200 }],
+    });
+
+    const saved = await prisma.meal.findFirst({ where: { rawDescription: pastDateMarker } });
+    expect(saved?.datetime.toISOString().slice(0, 10)).toBe('2020-01-01');
     if (saved) await prisma.meal.delete({ where: { id: saved.id } });
   });
 });

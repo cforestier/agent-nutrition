@@ -24,7 +24,12 @@ export interface LogMealInput {
   kcalLow: number;
   kcalMid: number;
   kcalHigh: number;
+  mealDate?: string;
 }
+
+const MEAL_DATE_DESCRIPTION =
+  "Date ISO (AAAA-MM-JJ) du repas, à ne renseigner QUE si l'utilisateur fait référence explicitement à un jour différent d'aujourd'hui (\"hier soir\", \"avant-hier\", \"le 18/09\"...). " +
+  "Calcule-la toi-même à partir de la 'Date du jour' donnée dans le contexte. Omets ce champ si le message ne mentionne aucune date : le repas sera alors horodaté à maintenant.";
 
 export const LOG_MEAL_TOOL: ToolDefinition = {
   name: 'log_meal',
@@ -35,6 +40,7 @@ export const LOG_MEAL_TOOL: ToolDefinition = {
     type: 'object',
     properties: {
       rawDescription: { type: 'string' },
+      mealDate: { type: 'string', description: MEAL_DATE_DESCRIPTION },
       items: {
         type: 'array',
         items: {
@@ -184,6 +190,17 @@ async function splitByDuplicateStatus(sessionId: string, items: MealItemInput[])
   return { toSave, duplicateWithinSessionCount, possibleDuplicates };
 }
 
+// Only the calendar date is ever corrected via `mealDate` — the time-of-day is kept from "now"
+// since the model has no reliable way to know the exact minute a past meal was eaten, only that
+// it was a different day than today.
+function resolveMealDatetime(mealDate?: string): Date {
+  if (!mealDate) return new Date();
+  const now = new Date();
+  const target = new Date(`${mealDate}T00:00:00.000Z`);
+  target.setUTCHours(now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds(), now.getUTCMilliseconds());
+  return target;
+}
+
 function possibleDuplicatesNote(possibleDuplicates: PossibleDuplicate[]): string {
   if (possibleDuplicates.length === 0) return '';
   return possibleDuplicates
@@ -208,6 +225,7 @@ export async function handleLogMealTool(rawInput: Record<string, unknown>): Prom
     await prisma.meal.create({
       data: {
         inputType: 'text',
+        datetime: resolveMealDatetime(input.mealDate),
         rawDescription: input.rawDescription,
         items: toSave as unknown as Prisma.InputJsonValue,
         kcalLow: input.kcalLow,
@@ -245,6 +263,7 @@ export interface WeighedMealItemInput {
 export interface LogWeighedMealInput {
   rawDescription: string;
   items: WeighedMealItemInput[];
+  mealDate?: string;
 }
 
 export const LOG_WEIGHED_MEAL_TOOL: ToolDefinition = {
@@ -257,6 +276,7 @@ export const LOG_WEIGHED_MEAL_TOOL: ToolDefinition = {
     type: 'object',
     properties: {
       rawDescription: { type: 'string' },
+      mealDate: { type: 'string', description: MEAL_DATE_DESCRIPTION },
       items: {
         type: 'array',
         items: {
@@ -338,6 +358,7 @@ export async function handleLogWeighedMealTool(rawInput: Record<string, unknown>
     await prisma.meal.create({
       data: {
         inputType: 'text',
+        datetime: resolveMealDatetime(input.mealDate),
         rawDescription: input.rawDescription,
         items: toSave as unknown as Prisma.InputJsonValue,
         kcalLow: totalKcal,
